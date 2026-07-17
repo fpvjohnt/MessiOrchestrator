@@ -1,0 +1,35 @@
+[
+  {
+    "key": "ca_medical_records_deadline",
+    "label": "California deadline for a provider to release medical records",
+    "value": "15 days (some categories sooner)",
+    "as_of": "2026-07-05",
+    "source": "California Health & Safety Code §123110 (approx; verify current)",
+    "verify_url": "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?lawCode=HSC&division=106.&title=&part=1.&chapter=1.&article=",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "Verify the exact current deadline and any category-specific exceptions before relying on it for a dispute."
+  },
+  {
+    "key": "insurance_appeal_deadline_ca",
+    "label": "Typical deadline to appeal a California health insurance denial",
+    "value": "180 days for internal appeal (varies by plan type)",
+    "as_of": "2026-07-05",
+    "source": "CA Dept of Managed Health Care / DMHC (approx; verify current)",
+    "verify_url": "https://www.dmhc.ca.gov/FileaComplaint.aspx",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "Medicare/Medicaid/employer self-funded plans can have different rules and shorter windows — verify which type of plan applies."
+  },
+  {
+    "key": "protein_intake_general",
+    "label": "General adult protein intake guideline (RDA baseline)",
+    "value": "~0.8g per kg body weight/day baseline; commonly higher (1.0-1.2g/kg+) recommended for older adults",
+    "as_of": "2026-07-05",
+    "source": "NIH / USDA Dietary Guidelines (approx; verify current edition)",
+    "verify_url": "https://www.dietaryguidelines.gov",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "The 0.8g/kg RDA is a MINIMUM to prevent deficiency, not necessarily an optimal target — especially for older adults or anyone resistance training. A dietitian can tailor an actual number."
+  }
+]

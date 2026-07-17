@@ -1,0 +1,22 @@
+{
+  "name": "loop-mcp",
+  "version": "0.1.0",
+  "description": "Loop Engineering MCP: how to design, build, debug, and evaluate agentic AI loops — the observe→think→act→reflect cycle and its patterns (ReAct, plan-and-execute, reflexion/self-correction, the tool-use loop, RAG loops, multi-agent orchestration, evaluator-optimizer, human-in-the-loop, memory/state). design_loop picks an architecture for a task; debug_loop diagnoses runaway/thrashing/drifting loops; eval_loop shows how to measure it honestly (consistency ≠ correctness); myth_vs_reality debunks the 'more agents = better' folklore; and check_practice → practice_verdict verify fast-moving specifics via research. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "loop-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}

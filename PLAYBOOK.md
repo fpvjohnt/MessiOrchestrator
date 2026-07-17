@@ -1,0 +1,159 @@
+# Multi-MCP System Playbook
+
+How to reproduce this whole system on a new collection / project / topic set.
+Hand this file (plus one existing asset folder as a template) to a fresh session
+and say: **"Build a multi-MCP system like this playbook. Here are the specialists
+I want: …"** — then follow the loop below, one asset at a time.
+
+---
+
+## 0. What it is (the "show what it does" part)
+
+One **orchestrator** MCP is the single front door. You ask it any question; it
+**routes** to the right specialist **asset** MCP(s), runs a **case** (a logged
+objective), and can **merge** their results. Around that: a **research** asset
+that verifies live facts, an **overseer** asset that watches everything, and
+**self-verifying quality gates** so nothing ships broken.
+
+```
+                 ┌─────────────┐
+   you  ─────▶   │ orchestrator│  routes by tag/keyword, runs a case
+                 └──────┬──────┘
+        ┌───────────┬───┴────┬───────────┬──────────┐
+     [asset A]  [asset B]  [research]  [ …assets ]  [overseer]
+     specialist specialist verify-loop            observability
+```
+
+## 1. The architecture (fixed parts — reuse as-is)
+
+- **orchestrator** — routing (`open_case`), tasking (`task_asset`), `synthesize_case`,
+  `health_check`, `outcome` tracking, and the case store. Reuse this whole package
+  unchanged; you only add assets.
+- **research** — multi-provider web search + page fetch + corroborated dossiers.
+  Mark it `fallback: true`. Every asset routes live/current facts here to verify.
+- **overseer** — read-only observability over the case store (replay, audit, drift,
+  errors, outcomes, latency). Portable; reuse unchanged.
+- **assets** — one MCP per domain. This is the only part you write per collection.
+
+## 2. The asset template (copy this per new specialist)
+
+Each asset is a small stdio MCP with this shape:
+
+```
+<name>-mcp/
+  package.json     # name, "type":"module", build:"tsc", deps: @modelcontextprotocol/sdk + zod
+  tsconfig.json    # copy from any existing asset
+  .gitignore       # node_modules/ dist/ *.log  (+ .env if it holds keys)
+  src/
+    index.ts       # McpServer + one registerTool() per tool; thin wrappers
+    <domain>.ts    # the CONTENT: a MAP of entries + a resolve<X>() reverse index + render fns
+    (reference-store.ts + data/*.json)   # OPTIONAL: for the verify loop
+```
+
+**The content pattern (`<domain>.ts`):**
+```ts
+export const ENTRIES = {
+  some_key: { label, keys: [...routing words...], /* fields */ },
+  ...
+};
+// reverse index: key + label + every keyword -> the entry
+const INDEX = {}; for (const [k,e] of Object.entries(ENTRIES)) {
+  INDEX[norm(k)] = k; INDEX[norm(e.label)] = k; for (const w of e.keys) INDEX[norm(w)] = k;
+}
+export function resolveX(input) { /* exact match, then substring for len>=3 */ }
+export function explainX(input?) { /* BOTTOM LINE first, then the detail */ }
+```
+
+## 3. The repeatable loop (do this once per asset)
+
+1. **Scaffold** — copy the 5 shared infra files + tsconfig/.gitignore from an
+   existing asset; write `package.json`.
+2. **Write** the domain map + tools (`<domain>.ts` + `index.ts`).
+3. **Build** — `npm install && npm run build`.
+4. **Recruit** — `recruit_asset(name, description, tags, "stdio", "node", ["<name>-mcp/dist/index.js"], cwd)`.
+   Tags are the routing signal — see §4.
+5. **Gate-check** — run `golden` + `paraphrase`. Fix any tag collision the gates
+   surface (this is where most bugs are — trust the gates).
+6. **Smoke test** one tool live through the orchestrator.
+7. **Cover it** — add the asset's `resolveX`/render fns to `regression.mjs`
+   (auto-derived key coverage + a render smoke). Then `npm run check` must be green.
+8. **Record** one line in the project memory.
+
+## 4. Tag hygiene (the #1 thing that breaks routing)
+
+- Tags must be **distinctive to the domain**, never generic words. Banned magnets
+  we learned the hard way: `how`, `work`, `money`, `world`, `material`, bare country
+  names, `pitch`, `training`. They grab unrelated questions.
+- Watch **cross-asset collisions** — if two assets both claim a word, decide who
+  owns it and drop it from the other (e.g. education owns `class`, curiosity owns
+  the bare science topics; linguistics owns `language`, not `english`).
+- Remember **stemming**: a plural tag (`materials`) also matches the singular
+  (`material`) — so a homonym can sneak back in.
+- **Let the gates find these.** Add golden/paraphrase entries for the new asset;
+  a dip in the number or a hard miss *is* the collision, named.
+
+## 5. The conventions that make answers good
+
+- **BOTTOM LINE first** — every tool leads with the one-sentence answer.
+- **Honesty backbone** — separate fact from myth, grade evidence honestly, and
+  **defer what you shouldn't answer** (medical → a doctor, legal → a lawyer,
+  spiritual → the person's own teachers). Never fake confidence.
+- **Verify live facts (the self-verifying loop)** — anything current (prices, rules,
+  stats) is stored with a `verify_url` and routed to `research` to confirm; write-backs
+  are **flag-only** (`confirm:true` required) so nothing silently rewrites itself. This
+  loop is now a **standing convention**, not ad-hoc: the orchestrator hands every client
+  a verify-loop protocol via the MCP `instructions` channel (`ORCHESTRATOR_INSTRUCTIONS`
+  in `src/index.ts`). After any asset answers with a checkable/current fact, the client
+  runs the maker≠checker loop — the asset's own `check_X`→`X_verdict` two-step, or
+  `research` — and labels the answer **VERIFIED / UPDATED / UNVERIFIED**. The orchestrator
+  has no LLM, so the *client* (Desktop/Cowork/Code) is the checker; the instructions are
+  what make it always close the loop. Takes effect on the next full app relaunch (server
+  instructions are read at connect).
+- **Fail safe** — if routing is unsure, it falls through to `research`, never to a
+  confidently-wrong specialist.
+
+## 6. The quality gates (one command: `npm run check`)
+
+- **`regression.mjs`** — pure-logic unit checks; MUST be 100%. Includes an
+  auto-derived test that every asset keyword resolves to its own entry (this alone
+  caught real in-asset collisions), plus a render smoke for every tool.
+- **`golden.mjs`** — routing **accuracy** against ~2 intent-labeled questions per
+  asset. Gated at a baseline; the sweep confirms the thresholds.
+- **`paraphrase.mjs`** — routing **robustness** to natural rephrasing. Gated on
+  *hard misses* (wrong specialist), not perfection — soft misses to research are OK.
+- **`health_check`** (orchestrator tool) — every asset reachable + not stale.
+- **`bootstrap.mjs`** (`npm run setup`) — install + build every package on a fresh
+  machine. **Keep its package list in sync when you add an asset.**
+
+## 7. Commands
+
+```sh
+npm run setup      # fresh machine: install + build everything
+npm run check      # the gate: regression + golden + paraphrase
+npm run health     # liveness + staleness of all assets
+npm run build:all  # rebuild orchestrator + all assets regression touches
+```
+
+## 8. Wiring into Claude Desktop / Cowork
+
+Only the **orchestrator** goes in `claude_desktop_config.json` (`mcpServers`).
+Assets are *not* listed there — they're recruited into the orchestrator's
+`registry.json`, so **recruiting = wiring**. Cowork shares the same config.
+After changes, **fully quit + relaunch** the app (the orchestrator process must
+respawn), then `health_check` to confirm.
+
+## 9. Kickoff prompt to paste into a new collection
+
+> I'm building a multi-MCP system per the attached PLAYBOOK.md. Reuse the
+> orchestrator, research, and overseer packages unchanged. Build me these
+> specialist assets, one at a time, following the loop in §3 and the tag hygiene
+> in §4: **[list your domains]**. For each: scaffold from the template, write the
+> domain map + tools with a BOTTOM-LINE-first honesty backbone, recruit it,
+> gate-check with golden/paraphrase, smoke-test one tool, add regression
+> coverage, and keep `npm run check` green. Verify with `health_check` at the end.
+
+---
+
+*The pattern is domain-agnostic: swap the specialists and it works for anything —
+a company knowledge base, a support system, a research desk, a personal-life
+advisor. The orchestrator, the gates, and the loop stay the same.*

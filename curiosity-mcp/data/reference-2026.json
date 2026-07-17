@@ -1,0 +1,46 @@
+[
+  {
+    "key": "age_of_universe",
+    "label": "Age of the universe",
+    "value": "13.8 billion years",
+    "as_of": "2024-01-01",
+    "source": "NASA / Planck mission cosmology",
+    "verify_url": "https://science.nasa.gov/universe/overview/",
+    "staleness_days": 1825,
+    "confidence": "high",
+    "notes": "Very stable; refined slowly as measurements improve."
+  },
+  {
+    "key": "confirmed_exoplanets",
+    "label": "Confirmed exoplanets (planets orbiting other stars)",
+    "value": "~5,800 confirmed",
+    "as_of": "2024-11-01",
+    "source": "NASA Exoplanet Archive",
+    "verify_url": "https://exoplanetarchive.ipac.caltech.edu/",
+    "staleness_days": 180,
+    "confidence": "medium",
+    "notes": "Climbs steadily as telescopes confirm more; re-check often."
+  },
+  {
+    "key": "speed_of_light",
+    "label": "Speed of light in vacuum",
+    "value": "299,792,458 meters per second (exact, by definition)",
+    "as_of": "2024-01-01",
+    "source": "SI unit definition (BIPM)",
+    "verify_url": "https://www.bipm.org/en/measurement-units",
+    "staleness_days": 3650,
+    "confidence": "high",
+    "notes": "Fixed exactly since 1983 — it defines the meter."
+  },
+  {
+    "key": "largest_quantum_processor",
+    "label": "Largest quantum processor (qubit count)",
+    "value": "IBM Condor, 1,121 qubits (2023)",
+    "as_of": "2024-01-01",
+    "source": "IBM Quantum roadmap",
+    "verify_url": "https://www.ibm.com/quantum/roadmap",
+    "staleness_days": 180,
+    "confidence": "medium",
+    "notes": "Fast-moving field; raw qubit count isn't the whole story (error rates matter more)."
+  }
+]

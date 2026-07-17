@@ -1,0 +1,57 @@
+[
+  {
+    "key": "limit_401k_2026",
+    "label": "401k employee contribution limit, 2026",
+    "value": "$24,500 (under 50)",
+    "as_of": "2026-07-06",
+    "source": "IRS.gov — verified live against retirement-topics page + IR-2025-111",
+    "verify_url": "https://www.irs.gov/retirement-plans/plan-participant-employee/retirement-topics-401k-and-profit-sharing-plan-contribution-limits",
+    "staleness_days": 365,
+    "confidence": "high",
+    "notes": "Catch-up 50+: $8,000 extra ($32,500 total). Ages 60-63: $11,250 catch-up (SECURE 2.0). Limits adjust each year."
+  },
+  {
+    "key": "limit_ira_2026",
+    "label": "IRA/Roth IRA contribution limit, 2026",
+    "value": "$7,500 (under 50)",
+    "as_of": "2026-07-06",
+    "source": "IRS.gov — verified live against retirement-topics page + IR-2025-111",
+    "verify_url": "https://www.irs.gov/retirement-plans/plan-participant-employee/retirement-topics-ira-contribution-limits",
+    "staleness_days": 365,
+    "confidence": "high",
+    "notes": "Catch-up 50+: $1,100 extra ($8,600 total). Roth income phase-out 2026: $153k-$168k single, $242k-$252k married joint."
+  },
+  {
+    "key": "limit_hsa_2026",
+    "label": "HSA contribution limit, 2026",
+    "value": "$4,400 self / $8,750 family",
+    "as_of": "2026-07-06",
+    "source": "IRS Rev. Proc. 2025-19 — verified live, corroborated by IRS Notice 26-05",
+    "verify_url": "https://www.irs.gov/pub/irs-drop/rp-25-19.pdf",
+    "staleness_days": 365,
+    "confidence": "high",
+    "notes": "Requires a high-deductible health plan. verify_url is a PDF — research surfaces it via search snippets rather than full fetch."
+  },
+  {
+    "key": "hysa_rate",
+    "label": "Typical high-yield savings (HYSA) rate",
+    "value": "~3.5-4.5% APY",
+    "as_of": "2026-07-06",
+    "source": "General market level (moves with the Fed)",
+    "verify_url": "https://www.fdic.gov/national-rates-and-rate-caps",
+    "staleness_days": 60,
+    "confidence": "low",
+    "notes": "Changes with Fed policy. Compare current offers; any big bank paying ~0.01% is the trap."
+  },
+  {
+    "key": "ltcg_rates",
+    "label": "Federal long-term capital gains rates",
+    "value": "0% / 15% / 20% by income bracket (most people: 15%)",
+    "as_of": "2026-01-01",
+    "source": "IRS (structure stable; brackets shift yearly)",
+    "verify_url": "https://www.irs.gov/taxtopics/tc409",
+    "staleness_days": 365,
+    "confidence": "high",
+    "notes": "CALIFORNIA gives no discount — state taxes gains as ordinary income on top."
+  }
+]

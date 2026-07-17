@@ -1,0 +1,12 @@
+{
+  "name": "linguistics-mcp",
+  "version": "0.1.0",
+  "description": "Linguistics MCP: the world's languages and how they work — the major language families and where they're spoken, how language itself works (sounds, grammar, writing systems, how languages change), the science of actually learning one, and the myths (no language is 'primitive'; adults CAN learn). Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "linguistics-mcp": "dist/index.js" },
+  "scripts": { "build": "tsc", "start": "node dist/index.js", "dev": "tsc --watch" },
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.12.0", "zod": "^3.23.8" },
+  "devDependencies": { "typescript": "^5.5.4", "@types/node": "^20.14.10" },
+  "engines": { "node": ">=18" }
+}

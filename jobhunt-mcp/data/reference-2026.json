@@ -1,0 +1,46 @@
+[
+  {
+    "key": "living_wage_riverside",
+    "label": "Living wage — single adult, Riverside County CA (approx)",
+    "value": "roughly $27-$32/hr (~$56k-$66k/yr) for a single adult, no kids",
+    "as_of": "2026-07-05",
+    "source": "MIT Living Wage Calculator (approx; verify current)",
+    "verify_url": "https://livingwage.mit.edu/counties/06065",
+    "staleness_days": 180,
+    "confidence": "low",
+    "notes": "Approximate — changes with rent/inflation and household size (much higher with kids). Verify your exact number at livingwage.mit.edu."
+  },
+  {
+    "key": "ca_rn_pay",
+    "label": "Registered Nurse (RN) pay — California",
+    "value": "~$110k-$150k+/yr (among the highest in the US)",
+    "as_of": "2026-07-05",
+    "source": "BLS / CA EDD (approx)",
+    "verify_url": "https://www.bls.gov/oes/current/oes291141.htm",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "CA pays RNs among the most nationally. CNA→LVN→RN is a laddered on-ramp. Verify current figures at BLS/EDD."
+  },
+  {
+    "key": "ca_skilled_trades_pay",
+    "label": "Skilled trades pay — California (electrician/HVAC/plumber)",
+    "value": "~$70k-$110k+/yr; apprenticeships pay while you train",
+    "as_of": "2026-07-05",
+    "source": "BLS / CA apprenticeship programs (approx)",
+    "verify_url": "https://www.bls.gov/ooh/construction-and-extraction/electricians.htm",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "Earn-while-you-learn, no student debt, can't be offshored. Verify current CA figures at BLS."
+  },
+  {
+    "key": "ca_cyber_pay",
+    "label": "Cybersecurity / IT security pay — California",
+    "value": "~$90k-$150k+/yr; cert-friendly entry (Security+)",
+    "as_of": "2026-07-05",
+    "source": "BLS / market (approx)",
+    "verify_url": "https://www.bls.gov/ooh/computer-and-information-technology/information-security-analysts.htm",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "Help desk → Security+ → SOC analyst is a common no-degree ladder. Verify current figures at BLS."
+  }
+]

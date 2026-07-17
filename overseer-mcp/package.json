@@ -1,0 +1,22 @@
+{
+  "name": "overseer-mcp",
+  "version": "0.1.0",
+  "description": "Observability MCP for orchestrator-style agent systems: replays a case's full timeline (routing, every asset call, results/errors) and reports call/error counts per asset. Reads any orchestrator's cases.json/registry.json by path — not tied to one deployment. Runs as an asset under orchestrator-mcp, or standalone.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "overseer-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}

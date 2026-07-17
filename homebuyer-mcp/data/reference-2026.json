@@ -1,0 +1,112 @@
+[
+  {
+    "key": "rate_30yr_fixed_ca",
+    "label": "30-year fixed mortgage rate (California average)",
+    "value": "~6.31–6.42% (varies by credit)",
+    "as_of": "2026-07-06",
+    "source": "MyFinancialPrograms / WSJ-Bankrate",
+    "verify_url": "https://www.freddiemac.com/pmms",
+    "staleness_days": 7,
+    "confidence": "high",
+    "notes": "Rates move daily. National avg ~6.47–6.51%. Dipped below 6% in Feb 2026, rose on geopolitical tension. FHA ~6.10%, VA ~5.84%. Always get live quotes from 3+ lenders."
+  },
+  {
+    "key": "conforming_limit_riverside",
+    "label": "2026 conforming (conventional) loan limit, Riverside County, 1-unit",
+    "value": "$832,750",
+    "as_of": "2026-07-06",
+    "source": "FHFA (official press release)",
+    "verify_url": "https://www.fhfa.gov/news/news-release/fhfa-announces-conforming-loan-limit-values-for-2026",
+    "staleness_days": 180,
+    "confidence": "high",
+    "notes": "National baseline, up $26,250 from 2025's $806,500. Riverside is NOT a high-cost county, so it uses the baseline (not the $1,249,125 ceiling). VA follows this same limit."
+  },
+  {
+    "key": "fha_limit_riverside",
+    "label": "2026 FHA loan limit, Riverside County, 1-unit",
+    "value": "$690,000",
+    "as_of": "2026-07-06",
+    "source": "HUD (via homebuyer.com aggregation)",
+    "verify_url": "https://entp.hud.gov/idapp/html/hicostlook.cfm",
+    "staleness_days": 180,
+    "confidence": "medium",
+    "notes": "Single aggregated source — verify at HUD before relying on it. A median Murrieta home (~$690k) sits right at this limit, so FHA is viable but tight there."
+  },
+  {
+    "key": "usda_limit_riverside",
+    "label": "2026 USDA guaranteed loan limit, Riverside County, 1-unit",
+    "value": "$433,020",
+    "as_of": "2026-07-06",
+    "source": "USDA (via homebuyer.com aggregation)",
+    "verify_url": "https://www.rd.usda.gov/resources/directives/handbooks",
+    "staleness_days": 180,
+    "confidence": "medium",
+    "notes": "USDA 0%-down loans require the property be in an eligible rural area — parts of outer Riverside County (near Lake Elsinore/Menifee fringes) may qualify. Check the USDA eligibility map for a specific address."
+  },
+  {
+    "key": "dream_for_all_structure",
+    "label": "California Dream For All — program structure",
+    "value": "Up to 20% of purchase price as a shared-appreciation loan; deferred, no monthly payment, no interest. Repay original amount + same % of appreciation on sale/refi. Lottery-based, limited funding.",
+    "as_of": "2026-07-06",
+    "source": "CalHFA",
+    "verify_url": "https://www.calhfa.ca.gov/dream/",
+    "staleness_days": 90,
+    "confidence": "medium",
+    "notes": "Launched 2023 ($300M gone in 11 days); lottery format since 2024. It is NOT a monthly bill — it comes out of your sale proceeds. This is separate from a Section 8 rental voucher."
+  },
+  {
+    "key": "dream_for_all_income_limit_riverside",
+    "label": "California Dream For All — income limit, Riverside/Inland Empire",
+    "value": "Approximately $140k–$165k (2-person household) to $160k–$185k (4-person). APPROXIMATE.",
+    "as_of": "2026-06-30",
+    "source": "CalHFA (aggregated; source labels figures approximate)",
+    "verify_url": "https://www.calhfa.ca.gov/homeownership/limits/income/income-cadfa.pdf",
+    "staleness_days": 90,
+    "confidence": "low",
+    "notes": "Set per county + household size on HUD AMI; the source explicitly calls these approximate. Counts income of ALL adults over 18 in the household, not just borrowers. MUST confirm the exact figure at calhfa.ca.gov."
+  },
+  {
+    "key": "insurance_market_ca",
+    "label": "California home insurance market status",
+    "value": "In active reform after Jan 2025 LA wildfires. Major insurers pulled back; FAIR Plan (last resort) covers 555k+ homes. Sustainable Insurance Strategy now requires cat-model insurers to write >=85% market share in wildfire areas.",
+    "as_of": "2026-07-06",
+    "source": "CA Dept of Insurance / Gov. Newsom / Insurance Journal",
+    "verify_url": "https://www.insurance.ca.gov/",
+    "staleness_days": 60,
+    "confidence": "high",
+    "notes": "SW Riverside has wildfire exposure. NO INSURANCE = NO LOAN — get an insurance quote before committing to a specific home. Reforms may raise rates 30-40% but restore availability. Note: a 2025 appellate ruling (Gharibian v. Wawanesa) denied wildfire smoke-damage coverage."
+  },
+  {
+    "key": "median_price_murrieta",
+    "label": "Median/average home price, Murrieta CA",
+    "value": "~$688k (avg, Zillow) / ~$695k (median sale, MLS)",
+    "as_of": "2026-07-06",
+    "source": "Zillow / Greenleaf MLS report",
+    "verify_url": "https://www.zillow.com/home-values/6103/murrieta-ca/",
+    "staleness_days": 30,
+    "confidence": "medium",
+    "notes": "Down ~1.3% YoY. Market cooling toward buyers: rising days-on-market, ~2.9 months inventory, ~41% of sales included buyer concessions averaging ~$21,823."
+  },
+  {
+    "key": "median_price_temecula",
+    "label": "Median/average home price, Temecula CA",
+    "value": "~$767k (avg, Zillow) / ~$722.5k (median close, MLS)",
+    "as_of": "2026-07-06",
+    "source": "Zillow / Greenleaf MLS report",
+    "verify_url": "https://www.zillow.com/home-values/7386/temecula-ca/",
+    "staleness_days": 30,
+    "confidence": "medium",
+    "notes": "Down ~1.4% YoY, ~$358/sqft. Same cooling trend as Murrieta — buyer concessions common."
+  },
+  {
+    "key": "prop_tax_ca",
+    "label": "California property tax (Prop 13)",
+    "value": "~1.1–1.25% of purchase price per year (1% base + local voter-approved assessments), capped at ~2%/yr growth. Basis = your purchase price.",
+    "as_of": "2026-07-06",
+    "source": "California Prop 13 (stable statutory mechanics)",
+    "verify_url": "https://www.boe.ca.gov/proptaxes/proptax.htm",
+    "staleness_days": 730,
+    "confidence": "high",
+    "notes": "Mechanics are stable (bake-worthy). BUT Mello-Roos special taxes (very common in SW Riverside new developments) add $100-400+/mo ON TOP and are per-development — check the specific property's tax bill. Expect a one-time SUPPLEMENTAL tax bill after closing from reassessment."
+  }
+]

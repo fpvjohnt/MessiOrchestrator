@@ -1,0 +1,46 @@
+[
+  {
+    "key": "bachelors_credit_hours",
+    "label": "Credit hours for a US bachelor's degree",
+    "value": "~120 semester credit hours (typically 4 years full-time)",
+    "as_of": "2024-01-01",
+    "source": "US Dept of Education / standard accreditation norms",
+    "verify_url": "https://www.ed.gov/",
+    "staleness_days": 1825,
+    "confidence": "high",
+    "notes": "Very stable structural norm; a specific school may vary slightly."
+  },
+  {
+    "key": "ap_courses_count",
+    "label": "Number of AP courses offered (College Board)",
+    "value": "~38 AP courses",
+    "as_of": "2024-09-01",
+    "source": "College Board AP Program",
+    "verify_url": "https://apstudents.collegeboard.org/course-index-page",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "College Board adds/retires courses occasionally (e.g. AP Precalculus added 2023)."
+  },
+  {
+    "key": "sat_structure",
+    "label": "SAT test structure",
+    "value": "Digital SAT: Reading & Writing + Math sections, scored 400-1600 (since 2024)",
+    "as_of": "2024-03-01",
+    "source": "College Board",
+    "verify_url": "https://satsuite.collegeboard.org/sat",
+    "staleness_days": 730,
+    "confidence": "high",
+    "notes": "Went fully digital in the US in spring 2024."
+  },
+  {
+    "key": "hs_credits_typical",
+    "label": "Typical US high school credits to graduate",
+    "value": "~22-26 credits (set by each state/district)",
+    "as_of": "2024-01-01",
+    "source": "State education agencies (varies)",
+    "verify_url": "https://nces.ed.gov/",
+    "staleness_days": 1095,
+    "confidence": "medium",
+    "notes": "No single national number — verify the user's own state/district."
+  }
+]

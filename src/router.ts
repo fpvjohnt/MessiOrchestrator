@@ -1,0 +1,166 @@
+import type { AssetConfig } from "./types.js";
+import { expandConcepts } from "./synonyms.js";
+
+export interface AssetMatch {
+  name: string;
+  score: number;
+  matchedTags: string[];
+}
+
+// Pure grammatical glue — filtered out so two unrelated objectives that both
+// happen to contain "the"/"for"/"with" don't score a spurious match. Verbs
+// like "find"/"run"/"search" are deliberately NOT here since they can be
+// meaningful tags (e.g. an asset tagged "search").
+const STOPWORDS = new Set([
+  "a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "for", "with",
+  "by", "at", "from", "is", "are", "was", "were", "be", "been", "being",
+  "it", "its", "this", "that", "these", "those", "as", "if", "then", "than",
+  "so", "not", "no", "i", "you", "he", "she", "we", "they", "them",
+  "my", "your", "our", "their",
+  // Question/auxiliary words: pure grammar, never a meaningful tag match. Left
+  // out originally, they leaked in and scored spurious DESCRIPTION hits (e.g.
+  // "what's the tallest building" matched overseer's description on "what").
+  "what", "how", "why", "who", "when", "where", "which", "whom", "whose",
+  "do", "does", "did", "can", "could", "should", "would", "will", "am",
+]);
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+// Conservative plural fold so "migraines"/"stocks"/"cops" match the singular
+// tag. Only trailing "s" on words >3 chars, never "ss" (address, access).
+// Applied to BOTH query and tag tokens so the fold is symmetric.
+function stem(w: string): string {
+  return w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
+}
+
+// Length >= 2 drops apostrophe fragments ("what's" -> "s", "case's" -> "s")
+// that were being counted as matches; 2 is the floor so real short tags like
+// "ai"/"bi" still route.
+function contentTokens(text: string): string[] {
+  return tokenize(text)
+    .filter((t) => t.length >= 2 && !STOPWORDS.has(t))
+    .map(stem);
+}
+
+// Tags are the deliberate routing signal an operator supplied, so a tag hit
+// counts for more than an incidental word match in the free-text name or
+// description.
+const TAG_WEIGHT = 3;
+const NAME_WEIGHT = 2;
+const DESCRIPTION_WEIGHT = 1;
+
+/**
+ * Scores active assets against an objective by overlapping tokens between
+ * the objective text and each asset's name/description/tags. Tag matches
+ * are surfaced separately so callers can explain why an asset was picked.
+ */
+export function matchAssets(objective: string, assets: AssetConfig[]): AssetMatch[] {
+  // Expand only the QUERY with concept synonyms (asset tags are already
+  // canonical). "cops took me into custody" gains "police"; the asset's
+  // 'police' tag then matches.
+  const objectiveTokens = expandConcepts(contentTokens(objective));
+  const candidates = assets.filter((a) => a.status === "active");
+
+  const scored: AssetMatch[] = candidates.map((asset) => {
+    const matchedTags = new Set<string>();
+    let score = 0;
+
+    for (const token of contentTokens(asset.name)) {
+      if (objectiveTokens.has(token)) score += NAME_WEIGHT;
+    }
+    for (const token of contentTokens(asset.description)) {
+      if (objectiveTokens.has(token)) score += DESCRIPTION_WEIGHT;
+    }
+    for (const tag of asset.tags) {
+      for (const token of contentTokens(tag)) {
+        if (objectiveTokens.has(token)) {
+          score += TAG_WEIGHT;
+          matchedTags.add(token);
+        }
+      }
+    }
+
+    return { name: asset.name, score, matchedTags: [...matchedTags] };
+  });
+
+  return scored.sort((a, b) => b.score - a.score);
+}
+
+// Interrogatives / question shapes. A plain-language question ("what is X",
+// "how do I Y") often shares no literal tokens with any asset's tags, so we
+// detect the intent itself and let fallback assets field it.
+const QUESTION_LEADERS = new Set([
+  "what", "why", "how", "who", "when", "where", "which", "whom", "whose",
+  "is", "are", "was", "were", "do", "does", "did", "can", "could", "should",
+  "would", "will", "explain", "find", "research", "tell", "describe", "compare",
+]);
+
+export function looksLikeQuestion(objective: string): boolean {
+  const trimmed = objective.trim();
+  if (trimmed.endsWith("?")) return true;
+  const first = tokenize(trimmed)[0];
+  return first !== undefined && QUESTION_LEADERS.has(first);
+}
+
+export function fallbackAssets(assets: AssetConfig[]): AssetConfig[] {
+  return assets.filter((a) => a.status === "active" && a.fallback);
+}
+
+export interface AssetSelection {
+  assigned: string[];
+  rationale: string;
+}
+
+export interface RoutingThresholds {
+  // Minimum score to be considered at all. A tag hit scores 3, so the default
+  // of 3 means "at least one deliberate tag match"; a stray description word
+  // (1-2) is filtered out.
+  floor: number;
+  // A secondary asset joins only if its score is at least this fraction of the
+  // top match's — 0.5 means "at least half as strong as the leader".
+  secondaryRatio: number;
+}
+
+export const DEFAULT_THRESHOLDS: RoutingThresholds = { floor: 3, secondaryRatio: 0.5 };
+
+/**
+ * The full auto-routing decision for an objective, as a pure function so it
+ * can be unit-tested without opening (and writing) a real case. Encapsulates
+ * the confidence floor, the "competitive secondary" rule, and the fallback to
+ * first-line responders. index.ts's open_case handler is a thin wrapper on
+ * this. Thresholds are injectable so the golden-set harness can sweep them;
+ * the defaults are the production values.
+ */
+export function selectAssets(
+  objective: string,
+  assets: AssetConfig[],
+  thresholds: RoutingThresholds = DEFAULT_THRESHOLDS
+): AssetSelection {
+  const matches = matchAssets(objective, assets).filter((m) => m.score >= thresholds.floor);
+  const confident = matches.filter((m) => m.score >= matches[0].score * thresholds.secondaryRatio);
+  if (confident.length > 0) {
+    return {
+      assigned: confident.slice(0, 3).map((m) => m.name),
+      rationale: confident
+        .slice(0, 3)
+        .map((m) => `${m.name} (score ${m.score}${m.matchedTags.length ? `, tags: ${m.matchedTags.join(", ")}` : ""})`)
+        .join("; "),
+    };
+  }
+  // No keyword match. A plain-language question ("what is X?") often shares no
+  // literal tokens with any asset's tags — so fall back to any asset marked as
+  // a first-line responder (e.g. research), the intended "search first, then
+  // correlate" entry point.
+  const fallbacks = fallbackAssets(assets);
+  if (fallbacks.length > 0) {
+    const assigned = fallbacks.map((a) => a.name);
+    const why = looksLikeQuestion(objective) ? "objective is a question" : "no keyword match";
+    return { assigned, rationale: `${why} — routed to fallback asset(s): ${assigned.join(", ")}` };
+  }
+  return { assigned: [], rationale: "no tag/description overlap and no fallback asset registered — no assets auto-assigned" };
+}

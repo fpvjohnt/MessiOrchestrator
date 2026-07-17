@@ -1,0 +1,57 @@
+[
+  {
+    "key": "ca_small_claims_limit",
+    "label": "California small claims dollar limit (individuals)",
+    "value": "$12,500 (individuals); $6,250 (businesses)",
+    "as_of": "2026-07-05",
+    "source": "California Courts (limit raised effective 2024)",
+    "verify_url": "https://selfhelp.courts.ca.gov/small-claims",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "Individual limit rose to $12,500 in recent years. No lawyers in the hearing. Verify current cap at selfhelp.courts.ca.gov before filing."
+  },
+  {
+    "key": "ca_sol_personal_injury",
+    "label": "CA statute of limitations — personal injury",
+    "value": "2 years from the injury",
+    "as_of": "2026-07-05",
+    "source": "California Code of Civil Procedure §335.1",
+    "verify_url": "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?lawCode=CCP&division=&title=2.&part=2.&chapter=3.",
+    "staleness_days": 730,
+    "confidence": "high",
+    "notes": "Claims against a GOVERNMENT entity can require a claim in as little as 6 months — much shorter."
+  },
+  {
+    "key": "ca_sol_written_contract",
+    "label": "CA statute of limitations — written contract",
+    "value": "4 years",
+    "as_of": "2026-07-05",
+    "source": "California Code of Civil Procedure §337",
+    "verify_url": "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?lawCode=CCP&division=&title=2.&part=2.&chapter=3.",
+    "staleness_days": 730,
+    "confidence": "high",
+    "notes": "Oral contract is 2 years (§339). Debt past the SOL is generally uncollectable — don't restart the clock by paying/admitting."
+  },
+  {
+    "key": "ca_civil_answer_deadline",
+    "label": "CA deadline to answer a lawsuit after being served",
+    "value": "30 days",
+    "as_of": "2026-07-05",
+    "source": "California Code of Civil Procedure §412.20/§471.5",
+    "verify_url": "https://selfhelp.courts.ca.gov/respond-lawsuit",
+    "staleness_days": 730,
+    "confidence": "high",
+    "notes": "Miss it and the other side can get a DEFAULT judgment (auto-loss). Small claims has a shorter, different process."
+  },
+  {
+    "key": "right_to_counsel_criminal",
+    "label": "Right to a free lawyer (criminal)",
+    "value": "Yes — a public defender if you cannot afford one",
+    "as_of": "2026-07-05",
+    "source": "6th Amendment / Gideon v. Wainwright",
+    "verify_url": "https://www.courts.ca.gov/selfhelp-criminal.htm",
+    "staleness_days": 1095,
+    "confidence": "high",
+    "notes": "Applies to criminal charges (jail possible). There is NO free government lawyer in immigration or most civil cases — but legal aid/nonprofits help."
+  }
+]

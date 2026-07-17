@@ -1,0 +1,22 @@
+{
+  "name": "jobhunt-mcp",
+  "version": "0.1.0",
+  "description": "Job-search coaching MCP: career discovery + pathways, the hiring funnel, beat-the-ATS, resume/interview, how recruiters/hiring managers think, the 'why am I stuck?' diagnostic, salary negotiation, and California living-wage/market data. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "jobhunt-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}

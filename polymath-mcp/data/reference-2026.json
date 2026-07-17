@@ -1,0 +1,57 @@
+[
+  {
+    "key": "ai_eng_hot_tools",
+    "label": "Current in-demand AI engineering tools/stack",
+    "value": "LLM orchestration (LangChain/LangGraph), vector DBs (Pinecone/pgvector), agent frameworks, MCP-style tool integration, LLM observability (LangSmith)",
+    "as_of": "2026-07-05",
+    "source": "Industry surveys (approx; verify live)",
+    "verify_url": "https://survey.stackoverflow.co/",
+    "staleness_days": 90,
+    "confidence": "low",
+    "notes": "This space moves monthly. Always re-verify before committing to a stack for a real project."
+  },
+  {
+    "key": "data_bi_hot_tools",
+    "label": "Current in-demand data/BI stack",
+    "value": "BigQuery/Snowflake + dbt for transforms + Looker or Tableau for BI, Python/pandas for heavier analysis",
+    "as_of": "2026-07-05",
+    "source": "Industry surveys (approx; verify live)",
+    "verify_url": "https://survey.stackoverflow.co/",
+    "staleness_days": 180,
+    "confidence": "medium",
+    "notes": "dbt is the field's standard transform tool, independent of whether any individual claims it on their own resume."
+  },
+  {
+    "key": "cloud_infra_hot_tools",
+    "label": "Current in-demand cloud/infra stack",
+    "value": "Terraform for IaC, Kubernetes for orchestration, AWS/GCP/Azure as the big three, GPU orchestration (Ray, Slurm) rising with AI workloads",
+    "as_of": "2026-07-05",
+    "source": "Industry surveys (approx; verify live)",
+    "verify_url": "https://www.cncf.io/reports/",
+    "staleness_days": 180,
+    "confidence": "medium",
+    "notes": "GPU cluster management specifically is a fast-growing niche driven by AI training/inference demand."
+  },
+  {
+    "key": "hardware_silicon_hot_tools",
+    "label": "Current in-demand AI hardware & silicon stack",
+    "value": "HDLs (SystemVerilog/Verilog, VHDL) with UVM verification; ASIC EDA from Synopsys & Cadence (synthesis, place-and-route, timing closure); FPGA toolchains (AMD/Xilinx Vivado, Intel Quartus); Python for verification and accelerator/ML co-design; CUDA and accelerator-architecture skills for AI-chip work",
+    "as_of": "2026-07-14",
+    "source": "Industry surveys (approx; verify live)",
+    "verify_url": "https://spectrum.ieee.org/",
+    "staleness_days": 365,
+    "confidence": "medium",
+    "notes": "Silicon tooling moves slowly vs the AI-software layer — Verilog/VHDL and the Synopsys/Cadence EDA duopoly are stable for years. The fast-moving edge is AI-accelerator architecture (GPUs/NPUs/TPUs) and hardware-for-ML co-design."
+  },
+  {
+    "key": "ml_modeling_hot_tools",
+    "label": "Current in-demand ML modeling & computational-science stack",
+    "value": "PyTorch dominant (JAX rising for research/scale); Hugging Face ecosystem; NumPy/SciPy/pandas + scikit-learn for classical/tabular; experiment tracking (Weights & Biases, MLflow); distributed/GPU training (FSDP, DeepSpeed); the math core stays constant — linear algebra, calculus, probability, optimization",
+    "as_of": "2026-07-14",
+    "source": "Industry surveys (approx; verify live)",
+    "verify_url": "https://survey.stackoverflow.co/",
+    "staleness_days": 180,
+    "confidence": "medium",
+    "notes": "Frameworks drift (Torch vs JAX) but the underlying math and the train/eval/diagnose method don't. Distinct from ai_eng_hot_tools: this is building and training models, not wiring finished LLMs into apps."
+  }
+]

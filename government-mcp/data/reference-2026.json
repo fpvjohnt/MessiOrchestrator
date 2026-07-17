@@ -1,0 +1,35 @@
+[
+  {
+    "key": "schengen_90_180",
+    "label": "Schengen short-stay rule",
+    "value": "90 days within any rolling 180-day period, visa-free for many nationalities (tourism only, no work)",
+    "as_of": "2024-01-01",
+    "source": "European Commission migration & home affairs",
+    "verify_url": "https://home-affairs.ec.europa.eu/policies/schengen-borders-and-visa_en",
+    "staleness_days": 730,
+    "confidence": "high",
+    "notes": "EU's ETIAS travel authorization is being rolled out — check if it now applies to your nationality."
+  },
+  {
+    "key": "us_naturalization_years",
+    "label": "US naturalization residency requirement",
+    "value": "~5 years as a permanent resident (3 if married to a US citizen)",
+    "as_of": "2024-01-01",
+    "source": "USCIS",
+    "verify_url": "https://www.uscis.gov/citizenship",
+    "staleness_days": 1095,
+    "confidence": "high",
+    "notes": "Plus physical-presence, good-moral-character, and civics/English test requirements."
+  },
+  {
+    "key": "japan_pr_years",
+    "label": "Japan permanent residence typical requirement",
+    "value": "~10 years of residence (fewer via the Highly Skilled Professional points fast-track)",
+    "as_of": "2024-01-01",
+    "source": "Japan Immigration Services Agency",
+    "verify_url": "https://www.isa.go.jp/en/",
+    "staleness_days": 1095,
+    "confidence": "medium",
+    "notes": "Highly Skilled Professionals can qualify in as little as 1-3 years by points."
+  }
+]

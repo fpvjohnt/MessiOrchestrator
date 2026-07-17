@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.log
+
+# Secrets — research-mcp API keys. Only .env.example is committed.
+.env
+
+# Machine-local Claude Code permission overrides.
+.claude/settings.local.json
+
+# Personal & work data. Generated at runtime, private to this machine; the code
+# recreates them on first run.
+#   cases.json        — full case history (addresses, legal/medical questions)
+#   */profile.json    — saved homebuyer / jobhunt personal profile
+#   work-context.json — saved employer stack and constraints
+data/cases.json
+homebuyer-mcp/data/profile.json
+jobhunt-mcp/data/profile.json
+polymath-mcp/data/work-context.json

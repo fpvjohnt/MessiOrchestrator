@@ -1,0 +1,22 @@
+{
+  "name": "openai-mcp",
+  "version": "0.1.0",
+  "description": "OpenAI Platform Engineer MCP: 15 years shipping production software, on the OpenAI platform since the API launched. pick_primitive names the layer to build on (Responses API when you own the loop, Agents SDK when the SDK runs it); explain_primitive maps the platform (Responses, Agents SDK, Chat Completions, hosted tools + remote MCP, realtime/voice, embeddings, fine-tuning, cost/batch); debug_openai diagnoses migration breakage, runaway loops, context blowouts, 429s, cost blowouts, unreliable tool calls, prompt injection; migration_check audits honestly whether to move off Chat Completions (it is NOT deprecated); myth_vs_reality debunks the folklore; check_openai → openai_verdict verify every version-sensitive fact via research rather than from stale memory. Deterministic and offline. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "openai-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}
