@@ -170,6 +170,14 @@ const IDIOMS: Record<string, { canon?: string; consume: string[] }> = {
   "react component": { canon: "reactjs", consume: ["react"] },
   "react app": { canon: "reactjs", consume: ["react"] },
   "react state": { canon: "reactjs", consume: ["react"] },
+  // A prediction-market event contract that "trades at" a price in cents —
+  // kalshi's domain, not a legal contract. lawguide owns the bare word
+  // 'contract' (a contract is signed, breached, binding); an event contract is
+  // none of those — it is bought and sold at a price. The disambiguator is the
+  // bigram: only a tradable contract "trades at" a number. Do NOT generalise to
+  // the bare "trading at": that was measured to collide, pulling kalshi onto
+  // stock questions ("stocks trading at a discount"). Keep the narrow bigram.
+  "contract trading": { canon: "eventcontract", consume: ["contract"] },
 };
 
 /**
