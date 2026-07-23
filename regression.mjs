@@ -66,7 +66,7 @@ import { outcomeReport } from "./overseer-mcp/dist/outcome.js";
 import { latencyReport } from "./overseer-mcp/dist/latency.js";
 // Supervisor decision logic. Plain .mjs under bridge/, imported directly — it
 // is pure by construction (no I/O, no timers) precisely so it can be tested here.
-import { interpretBridge, interpretTunnel, createHealthTracker, UP, DOWN, DEGRADED } from "./bridge/supervisor-logic.mjs";
+import { interpretBridge, interpretTunnel, createHealthTracker, formatAlertLine, formatAlertText, UP, DOWN, DEGRADED } from "./bridge/supervisor-logic.mjs";
 
 let passed = 0;
 const failures = [];
@@ -676,6 +676,32 @@ for (const [name, out] of START_HERE) {
     const bridgeSecond = t.record("bridge", down, 30_000);
     check("bridge restarts on its own second failure", bridgeSecond.restart === true);
     check("tunnel unaffected by bridge restart", t.peek("tunnel").restartAttempts === 0);
+  }
+}
+
+// ── 19b. The alert text actually carries the alert ─────────────────────────
+// The state machine can be perfect and the outage still go unreported if the
+// rendered line loses its substitutions. A bulk edit did exactly that once,
+// leaving "[ERROR]  - " — well-formed, informative of nothing, and invisible
+// to every assertion above, which only inspects the returned alert objects.
+{
+  const alert = { level: "error", title: "bridge is down", message: "stopped responding: ECONNREFUSED. Restarting it." };
+  const line = formatAlertLine("2026-01-01T00:00:00.000Z", alert);
+  check("alert log line keeps the timestamp", line.includes("2026-01-01T00:00:00.000Z"), line);
+  check("alert log line keeps the level", line.includes("[ERROR]"), line);
+  check("alert log line keeps the title", line.includes(alert.title), line);
+  check("alert log line keeps the message", line.includes(alert.message), line);
+
+  const text = formatAlertText("workstation", alert);
+  check("webhook text keeps the host", text.includes("workstation"), text);
+  check("webhook text keeps the title", text.includes(alert.title), text);
+  check("webhook text keeps the message", text.includes(alert.message), text);
+
+  // Logs are read in PowerShell and Notepad, which decode as ANSI by default
+  // and render UTF-8 punctuation as mojibake. Keep the rendered forms ASCII.
+  for (const [name, s] of [["log line", line], ["webhook text", text]]) {
+    // eslint-disable-next-line no-control-regex
+    check(`${name} is pure ASCII (logs are read in ANSI viewers)`, !/[^\x00-\x7F]/.test(s), s);
   }
 }
 

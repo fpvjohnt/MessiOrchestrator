@@ -51,7 +51,7 @@ export function interpretBridge(probe, { sessionIdleMs } = {}) {
     if (oldestMs > sessionIdleMs * 2) {
       return {
         state: DEGRADED,
-        reason: `session idle ${probe.body.oldestIdleMin}min exceeds ${Math.round(sessionIdleMs / 60_000)}min reap TTL — reaper may have stopped`,
+        reason: `session idle ${probe.body.oldestIdleMin}min exceeds ${Math.round(sessionIdleMs / 60_000)}min reap TTL - reaper may have stopped`,
       };
     }
   }
@@ -73,6 +73,22 @@ export function interpretTunnel(probe) {
   if (typeof ready !== "number") return { state: DOWN, reason: "no readyConnections in /ready" };
   if (ready < 1) return { state: DOWN, reason: "0 connections to the Cloudflare edge" };
   return { state: UP, reason: `${ready} edge connection(s)` };
+}
+
+// Alert rendering. Pure, and here rather than inline in supervisor.mjs because
+// these strings ARE the outage record — logs/alerts.log and the webhook body
+// are what you read at 3am, and a template that silently loses its
+// substitutions still writes a plausible-looking line. That is not
+// hypothetical: a careless bulk edit once reduced the log line to
+// "[ERROR]  - ", which is well-formed, alerts nothing, and passes every test
+// that only checks the state machine. These two have assertions.
+export function formatAlertLine(timestamp, alert) {
+  return `${timestamp} [${alert.level.toUpperCase()}] ${alert.title} - ${alert.message}`;
+}
+
+/** Single-line form for webhook shapes that take one text field (slack, discord). */
+export function formatAlertText(host, alert) {
+  return `[${host}] ${alert.title} - ${alert.message}`;
 }
 
 // Extra failed cycles required before each successive restart attempt. Without

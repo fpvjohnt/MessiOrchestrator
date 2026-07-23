@@ -23,7 +23,13 @@ import { appendFile, mkdir, readFile, stat, rename } from "node:fs/promises";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hostname } from "node:os";
-import { interpretBridge, interpretTunnel, createHealthTracker } from "./supervisor-logic.mjs";
+import {
+  interpretBridge,
+  interpretTunnel,
+  createHealthTracker,
+  formatAlertLine,
+  formatAlertText,
+} from "./supervisor-logic.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -137,8 +143,33 @@ async function probeJson(url) {
 const NTFY_PRIORITY = { recovery: "default", warning: "default", error: "high", critical: "urgent" };
 const NTFY_TAGS = { recovery: "white_check_mark", warning: "warning", error: "rotating_light", critical: "rotating_light" };
 
+// A webhook POST is one packet over the open internet and it does drop: during
+// testing one of three drills lost both alerts to a transient transport error
+// while the toast and the log file were unaffected. For the channel whose whole
+// job is to reach you when you are away from the machine, one cheap retry is
+// worth more than it costs. Transport failures and 5xx are retried; a 4xx is
+// not — a bad topic or a revoked webhook will fail identically forever.
+const WEBHOOK_ATTEMPTS = 2;
+const WEBHOOK_RETRY_MS = 1_000;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function sendWebhook(alert) {
   if (!WEBHOOK) return;
+  for (let attempt = 1; attempt <= WEBHOOK_ATTEMPTS; attempt++) {
+    const outcome = await attemptWebhook(alert);
+    if (outcome.done) return;
+    if (attempt < WEBHOOK_ATTEMPTS) {
+      log(`alert webhook attempt ${attempt} failed (${outcome.reason}) — retrying`);
+      await sleep(WEBHOOK_RETRY_MS);
+    } else {
+      log(`alert webhook failed after ${WEBHOOK_ATTEMPTS} attempts: ${outcome.reason}`);
+    }
+  }
+}
+
+/** @returns {{done: boolean, reason?: string}} done=true means delivered, or failed in a way retrying cannot fix. */
+async function attemptWebhook(alert) {
   try {
     let init;
     if (WEBHOOK_FORMAT === "ntfy") {
@@ -154,7 +185,7 @@ async function sendWebhook(alert) {
         body: alert.message,
       };
     } else {
-      const text = `[${HOST}] ${alert.title} — ${alert.message}`;
+      const text = formatAlertText(HOST, alert);
       const payload =
         WEBHOOK_FORMAT === "slack" ? { text } :
         WEBHOOK_FORMAT === "discord" ? { content: text } :
@@ -165,13 +196,29 @@ async function sendWebhook(alert) {
     const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
     try {
       const res = await fetch(WEBHOOK, { ...init, signal: ac.signal });
-      if (!res.ok) log(`alert webhook returned HTTP ${res.status}`);
+      if (res.ok) return { done: true };
+      if (res.status >= 500) return { done: false, reason: `HTTP ${res.status}` };
+      log(`alert webhook rejected the message: HTTP ${res.status} — check MCP_ALERT_WEBHOOK`);
+      return { done: true };
     } finally {
       clearTimeout(timer);
     }
   } catch (err) {
-    log("alert webhook failed:", err?.message ?? String(err));
+    // undici collapses every transport failure into the message "fetch failed"
+    // and hides the actual reason on err.cause. Reporting only the message means
+    // the one line telling you your alerting is broken says nothing about
+    // whether it was DNS, TLS, a timeout, or no route — which is exactly what
+    // you need at 3am, and the only record of an alert that never arrived.
+    return { done: false, reason: describeFetchError(err) };
   }
+}
+
+function describeFetchError(err) {
+  if (err?.name === "AbortError") return `no response within ${PROBE_TIMEOUT_MS}ms`;
+  const cause = err?.cause;
+  const detail = cause?.code ?? cause?.message ?? (cause ? String(cause) : null);
+  const base = err?.message ?? String(err);
+  return detail ? `${base} (${detail})` : base;
 }
 
 // Title and body go through the environment, not the command line: an alert
@@ -209,12 +256,16 @@ function sendToast(alert) {
 }
 
 async function deliver(alert) {
-  const line = `${new Date().toISOString()} [${alert.level.toUpperCase()}] ${alert.title} — ${alert.message}`;
+  const line = formatAlertLine(new Date().toISOString(), alert);
   console.log(line);
   await writeLine(ALERT_FILE, line);
   await writeLine(LOG_FILE, line);
   sendToast(alert);
-  await sendWebhook(alert);
+  // Deliberately not awaited. The webhook crosses the open internet and may
+  // retry; the restart this alert announces must not wait on it. The log file
+  // and the toast are already written by the time we get here, so a hung POST
+  // costs nothing but its own delivery. Errors are logged inside.
+  void sendWebhook(alert);
 }
 
 // ── recovery actions ──────────────────────────────────────────────────────
@@ -323,7 +374,7 @@ async function tick() {
 }
 
 log(
-  `supervisor started — bridge :${BRIDGE_PORT}, tunnel metrics :${TUNNEL_METRICS_PORT}, ` +
+  `supervisor started - bridge :${BRIDGE_PORT}, tunnel metrics :${TUNNEL_METRICS_PORT}, ` +
     `every ${INTERVAL_MS / 1000}s, restart after ${FAILURES_BEFORE_RESTART} failures, ` +
     `toast ${TOAST_ENABLED ? "on" : "off"}, webhook ${WEBHOOK ? WEBHOOK_FORMAT : "not configured"}`
 );

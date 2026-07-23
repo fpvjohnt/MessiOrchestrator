@@ -181,8 +181,14 @@ alert threshold recovers silently.
 the reap TTL, meaning the session reaper has stopped. It alerts and never
 restarts — killing a bridge that is still serving would cost more than the leak.
 
-**Where alerts go.** Windows toast + `logs/alerts.log`, always. Toast only
-reaches you at the machine; for anywhere else add a webhook to `.env`:
+**Where alerts go.** Windows toast + `logs/alerts.log`, always — both are local
+and effectively cannot fail. The webhook crosses the open internet and can:
+one drill in three lost both alerts to a transient transport error, so it gets
+one retry (transport errors and 5xx only — a 4xx means a bad URL and will fail
+identically forever). It is never awaited, so a slow POST cannot delay the
+restart it is announcing, and a failure to deliver is itself logged.
+
+Toast only reaches you at the machine; for anywhere else add a webhook to `.env`:
 
 ```sh
 # ntfy.sh needs no account — pick an unguessable topic and subscribe on your phone
