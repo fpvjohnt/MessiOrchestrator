@@ -15,6 +15,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { ipKeyGenerator } from "express-rate-limit";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
@@ -260,15 +261,71 @@ setInterval(() => {
 
 // oldestIdleMin is the number to alert on: it climbing past SESSION_IDLE_MS
 // means the reaper has stopped working.
-app.get("/healthz", (_req, res) => {
+// Whether the ORCHESTRATOR the bridge serves can actually answer, not just
+// whether this Express process is up. The old /healthz was a static ok:true —
+// so a bridge whose dist/index.js was broken (a bad build, a syntax error, a
+// crash-on-start) reported healthy forever, and the supervisor's whole point,
+// separating "process alive" from "actually serving", was unmet on the bridge
+// side even though it was met for cloudflared.
+//
+// The probe spawns a throwaway orchestrator over stdio and calls tools/list.
+// That exercises the real dist/index.js WITHOUT the 22-asset fleet, because the
+// orchestrator connects to assets lazily — listing its own tools spawns none of
+// them. Result is cached so repeated /healthz polls don't each pay for a spawn.
+const DEEP_PROBE_TTL_MS = 20_000;
+const DEEP_PROBE_TIMEOUT_MS = 12_000;
+let deepProbeCache = { at: 0, ok: null, detail: "not yet probed" };
+
+async function runDeepProbe() {
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [resolve(ROOT, "dist/index.js")],
+    cwd: ROOT,
+    stderr: "ignore",
+  });
+  const client = new Client({ name: "bridge-healthz-probe", version: "0.1.0" });
+  const timer = setTimeout(() => client.close().catch(() => {}), DEEP_PROBE_TIMEOUT_MS);
+  try {
+    await client.connect(transport);
+    const { tools } = await client.listTools();
+    // A serving orchestrator exposes its own case tools. Zero tools means it
+    // started but is not wired up — still a failure worth surfacing.
+    if (!tools?.length) return { ok: false, detail: "orchestrator returned no tools" };
+    return { ok: true, detail: `orchestrator responded with ${tools.length} tools` };
+  } catch (err) {
+    return { ok: false, detail: `orchestrator probe failed: ${err?.message ?? err}` };
+  } finally {
+    clearTimeout(timer);
+    await client.close().catch(() => {});
+  }
+}
+
+async function deepProbe() {
+  if (Date.now() - deepProbeCache.at < DEEP_PROBE_TTL_MS && deepProbeCache.ok !== null) {
+    return deepProbeCache;
+  }
+  const result = await runDeepProbe();
+  deepProbeCache = { at: Date.now(), ...result };
+  return deepProbeCache;
+}
+
+app.get("/healthz", async (req, res) => {
   const now = Date.now();
   const idleMins = [...sessions.values()].map((s) => Math.round((now - s.lastSeen) / 60000));
-  res.json({
-    ok: true,
+  const base = {
     sessions: sessions.size,
     oldestIdleMin: idleMins.length ? Math.max(...idleMins) : 0,
     uptime: Math.round(process.uptime()),
-  });
+  };
+  // Shallow by default (fast, for casual checks); ?deep=1 runs the real probe.
+  // The supervisor uses deep — it is the one caller that must know the
+  // orchestrator can serve, not just that the port is open.
+  if (req.query.deep === "1" || req.query.deep === "true") {
+    const probe = await deepProbe();
+    res.status(probe.ok ? 200 : 503).json({ ok: probe.ok, serving: probe.ok, detail: probe.detail, ...base });
+    return;
+  }
+  res.json({ ok: true, ...base });
 });
 
 // requireBearerAuth returns 401 with a WWW-Authenticate header pointing at the

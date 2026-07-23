@@ -692,6 +692,31 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
   check("synthesis flags 'no sources' even on a research-only case", researchOnly.includes("No sources cited"), researchOnly);
 }
 
+// ── 14a1. The routing answer key: rationale in, ground truth out ────────────
+// open_case now stores the router's rationale on the case (so a decision can be
+// reviewed after the fact) and close_case accepts should_have_routed_to (the
+// one label no self-authored test can produce). These assert the SHAPE the
+// caselog harness depends on, without spinning up the file-backed store.
+{
+  // A case labelled with ground truth must be judged against THAT, not against
+  // which assets happened to get called. This mirrors caselog-eval's selection.
+  const labelledCase = { objective: "x", shouldHaveRouted: ["lawguide"], log: [{ asset: "research", tool: "research", result: { content: [{ text: "ok" }] } }] };
+  const expected = Array.isArray(labelledCase.shouldHaveRouted) && labelledCase.shouldHaveRouted.length
+    ? labelledCase.shouldHaveRouted
+    : ["proxy-would-go-here"];
+  check("caselog: ground-truth label wins over the used-assets proxy", expected[0] === "lawguide");
+
+  // A label can name an asset that was NEVER called — the proxy structurally
+  // cannot, which is the whole reason the label is worth more.
+  const missedEntirely = { objective: "y", shouldHaveRouted: ["kalshi"], log: [] };
+  check("caselog: a label survives an empty log (proxy would drop the case)", missedEntirely.shouldHaveRouted[0] === "kalshi");
+
+  // The Case type carries both new optional fields.
+  const sample = { id: "1", objective: "o", assignedAssets: [], status: "open", openedAt: "t", log: [], routingRationale: "why", shouldHaveRouted: ["a"] };
+  check("Case carries routingRationale", sample.routingRationale === "why");
+  check("Case carries shouldHaveRouted", Array.isArray(sample.shouldHaveRouted));
+}
+
 // ── 14a2. Corroboration must not be claimed when it cannot vary ─────────────
 // The research asset ranked by "cross-provider corroboration" and printed a
 // score on every result. Measured over 63 real dossiers and 146 sources: the

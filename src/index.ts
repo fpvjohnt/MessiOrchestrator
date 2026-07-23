@@ -373,7 +373,7 @@ server.registerTool(
         rationale = selection.rationale;
       }
 
-      const caseRecord = await caseStore.createCase(objective, assigned);
+      const caseRecord = await caseStore.createCase(objective, assigned, rationale);
       return textResult(
         `Case ${caseRecord.id} opened.\nObjective: ${objective}\nAssigned assets: ${
           assigned.length ? assigned.join(", ") : "(none)"
@@ -592,20 +592,28 @@ server.registerTool(
   {
     title: "Close Case",
     description:
-      "Close a case, optionally recording a final summary and an OUTCOME — the feedback signal for " +
-      "overseer's quality report. outcome: 'resolved' (objective met), 'partial' (some help), 'unresolved' " +
-      "(right asset, no useful answer), 'misrouted' (went to the wrong asset). Record it honestly; it's how " +
-      "the system learns whether routing and answers actually worked.",
+      "Close a case, recording a final summary and an OUTCOME — the feedback signal for overseer's quality " +
+      "report and the routing answer key. outcome: 'resolved' (objective met), 'partial' (some help), " +
+      "'unresolved' (right asset, no useful answer), 'misrouted' (went to the wrong asset). When the outcome " +
+      "is 'misrouted', ALSO pass should_have_routed_to with the asset(s) that should have owned it — that is " +
+      "the one label no test set can generate, and caselog-eval uses it as ground truth. Record all of this " +
+      "honestly; it is how the system learns whether routing and answers actually worked.",
     inputSchema: {
       case_id: z.string().min(1),
       summary: z.string().optional(),
       outcome: z.enum(["resolved", "partial", "unresolved", "misrouted"]).optional(),
+      should_have_routed_to: z
+        .array(z.string().min(1))
+        .max(5)
+        .optional()
+        .describe("The asset(s) that SHOULD have been assigned. Set this whenever routing was wrong, especially with outcome 'misrouted'."),
     },
   },
-  async ({ case_id, summary, outcome }) => {
+  async ({ case_id, summary, outcome, should_have_routed_to }) => {
     try {
-      const caseRecord = await caseStore.closeCase(case_id, summary, outcome);
-      return textResult(`Case ${caseRecord.id} closed${outcome ? ` (outcome: ${outcome})` : ""}.`);
+      const caseRecord = await caseStore.closeCase(case_id, summary, outcome, should_have_routed_to);
+      const gt = should_have_routed_to?.length ? ` — recorded should-have-routed: ${should_have_routed_to.join(", ")}` : "";
+      return textResult(`Case ${caseRecord.id} closed${outcome ? ` (outcome: ${outcome})` : ""}${gt}.`);
     } catch (err) {
       return errorResult(err);
     }

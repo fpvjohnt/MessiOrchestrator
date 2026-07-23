@@ -12,7 +12,11 @@ async function saveCases(cases: Case[]): Promise<void> {
   await saveJsonArray(CASES_PATH, cases);
 }
 
-export async function createCase(objective: string, assignedAssets: string[]): Promise<Case> {
+export async function createCase(
+  objective: string,
+  assignedAssets: string[],
+  routingRationale?: string
+): Promise<Case> {
   return withFileLock(CASES_PATH, async () => {
     const cases = await loadCases();
     const newCase: Case = {
@@ -21,6 +25,7 @@ export async function createCase(objective: string, assignedAssets: string[]): P
       assignedAssets,
       status: "open",
       openedAt: new Date().toISOString(),
+      ...(routingRationale ? { routingRationale } : {}),
       log: [],
     };
     cases.push(newCase);
@@ -66,7 +71,12 @@ export async function appendLog(id: string, entry: CaseTaskLog): Promise<Case> {
   });
 }
 
-export async function closeCase(id: string, summary?: string, outcome?: CaseOutcome): Promise<Case> {
+export async function closeCase(
+  id: string,
+  summary?: string,
+  outcome?: CaseOutcome,
+  shouldHaveRouted?: string[]
+): Promise<Case> {
   return withFileLock(CASES_PATH, async () => {
     const cases = await loadCases();
     const caseRecord = cases.find((c) => c.id === id);
@@ -77,6 +87,7 @@ export async function closeCase(id: string, summary?: string, outcome?: CaseOutc
     caseRecord.closedAt = new Date().toISOString();
     if (summary) caseRecord.summary = summary;
     if (outcome) caseRecord.outcome = outcome;
+    if (shouldHaveRouted && shouldHaveRouted.length > 0) caseRecord.shouldHaveRouted = shouldHaveRouted;
     await saveCases(cases);
     return caseRecord;
   });

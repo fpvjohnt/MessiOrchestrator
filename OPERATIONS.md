@@ -55,10 +55,18 @@ bridge that is healthy, a supervisor that agrees, and a phone that gets nothing.
 ## Is it healthy?
 
 ```sh
-curl http://127.0.0.1:8787/healthz    # {"ok":true,"sessions":1,"oldestIdleMin":8,"uptime":6408}
-curl http://127.0.0.1:20241/ready     # {"status":200,"readyConnections":4}
-npm run health                        # every asset: up/down, tool count, build time
+curl http://127.0.0.1:8787/healthz          # fast: {"ok":true,"sessions":1,"oldestIdleMin":8,...}
+curl "http://127.0.0.1:8787/healthz?deep=1"  # deep: spawns an orchestrator, confirms it SERVES
+curl http://127.0.0.1:20241/ready            # {"status":200,"readyConnections":4}
+npm run health                               # every asset: up/down, tool count, build time
 ```
+
+The plain `/healthz` only says the bridge process is up. `?deep=1` spawns a
+throwaway orchestrator and lists its tools — proving the thing behind the port
+can actually answer, not just that the port is open. The supervisor polls the
+deep form, so a broken orchestrator build now triggers a restart instead of
+reporting healthy forever. It also runs `npm run health` across all 22 assets
+hourly and alerts on any DOWN.
 
 Three numbers matter:
 
@@ -237,7 +245,10 @@ gates; PLAYBOOK.md §4 covers tag hygiene.
    `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json`
 7. Put a shortcut to `wscript.exe "…\bridge\supervise.vbs"` in the Startup
    folder (`shell:startup`).
-8. `cmd /c "bridge\install-archive-task.cmd"` to register the daily archive.
+8. `cmd /c "bridge\install-archive-task.cmd"` to register the daily archive,
+   and `cmd /c "bridge\install-backup-task.cmd"` for the daily backup (03:45,
+   just after the archive). Set `MCP_BACKUP_DIR` in `.env` to a OneDrive/Dropbox
+   folder so the backup survives a drive failure, not just deletion.
 9. `npm run check` — must be green before you trust any of it.
 
 ---

@@ -34,3 +34,6 @@ bridge/oauth-state.json
 # (API keys etc.); a future recruit_asset/update_asset call could write a real
 # key into this file, and this repo is public. Don't put it back in git.
 data/registry.json
+
+# Supervisor single-instance lock — a live PID, never useful to track.
+data/.supervisor.lock

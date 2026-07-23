@@ -51,8 +51,18 @@ for (const c of all) {
     skippedProbe++;
     continue;
   }
-  // "Used" = the asset produced at least one call that did not fail. A failed
-  // call is not evidence the router chose well.
+  // GROUND TRUTH when the operator supplied it at close time (shouldHaveRouted)
+  // — a real label written against a real objective by someone who saw the
+  // answer. It beats the proxy in both directions: it can name an asset that
+  // was never called (the router missed it AND the operator couldn't work
+  // around it), which the "used" proxy structurally cannot.
+  if (Array.isArray(c.shouldHaveRouted) && c.shouldHaveRouted.length) {
+    cases.push({ objective, expected: c.shouldHaveRouted, source: "label" });
+    continue;
+  }
+
+  // Otherwise the PROXY: assets that produced at least one call that did not
+  // fail. A failed call is not evidence the router chose well.
   const used = new Set();
   for (const e of c.log ?? []) {
     if (!e.asset) continue;
@@ -64,7 +74,7 @@ for (const c of all) {
     skippedEmpty++;
     continue;
   }
-  cases.push({ objective, used: [...used] });
+  cases.push({ objective, expected: [...used], source: "proxy" });
 }
 
 let fullyCovered = 0;
@@ -72,14 +82,16 @@ let predictedTotal = 0;
 let predictedUnused = 0;
 const misses = [];
 
+let labelled = 0;
 for (const c of cases) {
+  if (c.source === "label") labelled++;
   const predicted = selectAssets(c.objective, registry).assigned;
-  const missing = c.used.filter((a) => !predicted.includes(a));
-  const unused = predicted.filter((a) => !c.used.includes(a));
+  const missing = c.expected.filter((a) => !predicted.includes(a));
+  const unused = predicted.filter((a) => !c.expected.includes(a));
   predictedTotal += predicted.length;
   predictedUnused += unused.length;
   if (missing.length === 0) fullyCovered++;
-  else misses.push({ objective: c.objective, used: c.used, predicted, missing });
+  else misses.push({ objective: c.objective, expected: c.expected, predicted, missing, source: c.source });
 }
 
 const coverage = cases.length ? fullyCovered / cases.length : 0;
@@ -89,8 +101,14 @@ const pct = (n) => `${(n * 100).toFixed(0)}%`;
 console.log(`\nREAL-TRAFFIC ROUTING — ${cases.length} cases from the live case log`);
 console.log(`  Excluded: ${skippedProbe} probe/smoke objective(s), ${skippedEmpty} case(s) with no successful call.`);
 console.log(``);
-console.log(`  Coverage (every asset the operator used was assigned):  ${fullyCovered}/${cases.length}  ${pct(coverage)}`);
-console.log(`  Noise    (assigned assets that were never called):      ${predictedUnused}/${predictedTotal}  ${pct(noise)}`);
+console.log(`  Coverage (expected assets that were assigned):  ${fullyCovered}/${cases.length}  ${pct(coverage)}`);
+console.log(`  Noise    (assigned assets that were never used): ${predictedUnused}/${predictedTotal}  ${pct(noise)}`);
+console.log(``);
+console.log(
+  labelled > 0
+    ? `  Labels: ${labelled} case(s) use operator GROUND TRUTH (shouldHaveRouted); the rest use the "assets used" proxy. Every close_case with should_have_routed_to strengthens this number.`
+    : `  Labels: 0 cases carry operator ground truth yet. Pass should_have_routed_to on close_case when routing is wrong — a handful of real labels is worth more than a hundred self-authored golden entries.`
+);
 
 // Which asset is most often missing tells you where to spend vocabulary.
 const missingBy = {};
@@ -107,7 +125,7 @@ if (misses.length) {
   console.log(`SAMPLE MISSES (objective truncated):`);
   for (const m of misses.slice(0, 12)) {
     console.log(`  ✗ "${m.objective.slice(0, 88)}${m.objective.length > 88 ? "…" : ""}"`);
-    console.log(`      used ${JSON.stringify(m.used)}  predicted ${JSON.stringify(m.predicted)}  MISSING ${JSON.stringify(m.missing)}`);
+    console.log(`      expected ${JSON.stringify(m.expected)}  predicted ${JSON.stringify(m.predicted)}  MISSING ${JSON.stringify(m.missing)}`);
   }
   if (misses.length > 12) console.log(`  … and ${misses.length - 12} more.`);
 }

@@ -50,5 +50,16 @@ export interface Case {
   closedAt?: string;
   summary?: string;
   outcome?: CaseOutcome;
+  // The router's own explanation for assignedAssets, captured at open time.
+  // Without it, a routing decision cannot be reviewed after the fact — the
+  // scores and matched tags that produced it are gone. This is what lets the
+  // case log become a routing answer key rather than a black box.
+  routingRationale?: string;
+  // Ground truth, supplied by the operator at close time when routing was
+  // wrong: the asset(s) that SHOULD have owned this objective. This is the one
+  // label no self-authored test set can provide, because it is written against
+  // a real objective by the person who saw the real answer. caselog-eval.mjs
+  // trusts it over the "which assets were called" proxy when present.
+  shouldHaveRouted?: string[];
   log: CaseTaskLog[];
 }

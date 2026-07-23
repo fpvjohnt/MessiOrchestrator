@@ -20,9 +20,14 @@
 // spawning anything. Everything in here is I/O.
 import { spawn, execFile } from "node:child_process";
 import { appendFile, mkdir, stat, rename } from "node:fs/promises";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hostname } from "node:os";
+// For the hourly asset-fleet check: spawn a throwaway orchestrator and call its
+// health_check, which connects to every registered asset.
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import {
   interpretBridge,
   interpretTunnel,
@@ -55,7 +60,12 @@ const BRIDGE_PORT = num("MCP_BRIDGE_PORT", 8787);
 // guess that silently starts failing the day the default range shifts.
 const TUNNEL_METRICS_PORT = num("MCP_TUNNEL_METRICS_PORT", 20241);
 const INTERVAL_MS = num("MCP_SUPERVISOR_INTERVAL_MS", 30_000);
-const PROBE_TIMEOUT_MS = num("MCP_SUPERVISOR_PROBE_TIMEOUT_MS", 5_000);
+// 15s, not 5s: the bridge's deep /healthz probe spawns a throwaway orchestrator
+// (~12s cold) to prove it can actually serve. The bridge caches that for 20s so
+// most polls are instant, but the first poll after a restart pays full price
+// and must not be cut off — a false timeout there would trigger a needless
+// restart of a bridge that is actually fine.
+const PROBE_TIMEOUT_MS = num("MCP_SUPERVISOR_PROBE_TIMEOUT_MS", 15_000);
 // Two consecutive failures, not one: a single missed probe during a GC pause or
 // a momentary network blip is not worth killing live sessions over.
 const FAILURES_BEFORE_RESTART = num("MCP_SUPERVISOR_FAILURES_BEFORE_RESTART", 2);
@@ -392,7 +402,13 @@ const tracker = createHealthTracker({
 const COMPONENTS = [
   {
     name: "bridge",
-    probe: () => probeJson(`http://127.0.0.1:${BRIDGE_PORT}/healthz`),
+    // deep=1 so the probe verifies the ORCHESTRATOR can serve, not just that
+    // the port is open. A broken build answers a shallow /healthz with ok:true
+    // forever; the deep probe returns 503, which interpretBridge already reads
+    // as DOWN and restarts. The 15s probe timeout in probeJson covers the ~12s
+    // orchestrator spawn, and the bridge caches the result for 20s so this
+    // 30s-interval poll almost always hits a warm answer.
+    probe: () => probeJson(`http://127.0.0.1:${BRIDGE_PORT}/healthz?deep=1`),
     interpret: (p) => interpretBridge(p, { sessionIdleMs: SESSION_IDLE_MS }),
     restart: restartBridge,
   },
@@ -441,9 +457,107 @@ async function tick() {
   }
 }
 
+// ── asset-fleet check ──────────────────────────────────────────────────────
+// Nothing watched the 22 asset servers. The bridge and tunnel had a watchdog;
+// a broken asset build was invisible until a user's question hit it. This runs
+// the orchestrator's own health_check — which connects to every registered
+// asset — on a slow interval and alerts on any DOWN. Slow (hourly) because it
+// spawns the whole fleet; the deep bridge probe already covers the fast path.
+const ASSET_CHECK_INTERVAL_MS = num("MCP_SUPERVISOR_ASSET_CHECK_MS", 60 * 60 * 1000);
+const ASSET_CHECK_TIMEOUT_MS = 60_000;
+let lastAssetVerdict = null;
+
+async function checkAssets() {
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [resolve(ROOT, "dist/index.js")],
+    cwd: ROOT,
+    stderr: "ignore",
+  });
+  const client = new Client({ name: "supervisor-asset-check", version: "0.1.0" });
+  const timer = setTimeout(() => client.close().catch(() => {}), ASSET_CHECK_TIMEOUT_MS);
+  try {
+    await client.connect(transport);
+    const res = await client.callTool({ name: "health_check", arguments: {} });
+    const text = res?.content?.[0]?.text ?? "";
+    const m = text.match(/(\d+)\/(\d+) reachable/);
+    const downLine = text.split("\n").find((l) => /reachable/.test(l)) ?? "health_check ran";
+    if (!m) {
+      return { ok: false, reason: `health_check gave no reachable count: ${text.slice(0, 120)}` };
+    }
+    const [, up, total] = m.map(Number);
+    // Name the DOWN assets so the alert is actionable, not just a count.
+    const down = text
+      .split("\n")
+      .filter((l) => /:\s*DOWN/.test(l))
+      .map((l) => l.trim().split(/[:\s]/)[0]);
+    return up === total
+      ? { ok: true, reason: downLine.trim() }
+      : { ok: false, reason: `${up}/${total} assets reachable - DOWN: ${down.join(", ") || "unknown"}` };
+  } catch (err) {
+    return { ok: false, reason: `asset check failed to run: ${err?.message ?? err}` };
+  } finally {
+    clearTimeout(timer);
+    await client.close().catch(() => {});
+  }
+}
+
+async function assetTick() {
+  const verdict = await checkAssets();
+  log(`assets: ${verdict.ok ? "ok" : "DEGRADED"} (${verdict.reason})`);
+  // Edge-triggered: alert when the fleet BECOMES unhealthy, and once more when
+  // it recovers — not every hour it stays down (that is what the log is for).
+  const was = lastAssetVerdict;
+  lastAssetVerdict = verdict.ok;
+  if (!verdict.ok && was !== false) {
+    await deliver({ level: "CRITICAL", title: "asset(s) down", message: verdict.reason });
+  } else if (verdict.ok && was === false) {
+    await deliver({ level: "RECOVERY", title: "assets recovered", message: verdict.reason });
+  }
+}
+
+// Single-instance guard. Two supervisors both killing-and-restarting the
+// bridge fight each other — the logs show this has happened (two "restarting
+// bridge" lines 4s apart against a 30s interval). A lock file carrying the
+// live PID lets a second launch bow out instead of doubling the watchdog.
+// A lock whose PID is no longer alive is stale (a hard-killed supervisor never
+// cleans up) and is reclaimed.
+const LOCK_FILE = join(HERE, "..", "data", ".supervisor.lock");
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0); // signal 0 tests existence without killing
+    return true;
+  } catch (err) {
+    return err.code === "EPERM"; // exists but not ours to signal
+  }
+}
+try {
+  if (existsSync(LOCK_FILE)) {
+    const held = Number(readFileSync(LOCK_FILE, "utf-8").trim());
+    if (held && held !== process.pid && pidAlive(held)) {
+      log(`another supervisor is already running (pid ${held}) - exiting so two watchdogs do not fight`);
+      process.exit(0);
+    }
+    log(`reclaiming stale supervisor lock (pid ${held} not alive)`);
+  }
+  writeFileSync(LOCK_FILE, String(process.pid));
+  const releaseLock = () => {
+    try {
+      if (Number(readFileSync(LOCK_FILE, "utf-8").trim()) === process.pid) unlinkSync(LOCK_FILE);
+    } catch {}
+  };
+  process.on("exit", releaseLock);
+  for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => process.exit(0));
+} catch (err) {
+  // A lock we cannot manage must not stop the watchdog from running — better a
+  // possible double than no supervision at all.
+  log(`supervisor lock unavailable (${err?.message ?? err}) - continuing without it`);
+}
+
 log(
   `supervisor started - bridge :${BRIDGE_PORT}, tunnel metrics :${TUNNEL_METRICS_PORT}, ` +
     `every ${INTERVAL_MS / 1000}s, restart after ${FAILURES_BEFORE_RESTART} failures, ` +
+    `asset check every ${Math.round(ASSET_CHECK_INTERVAL_MS / 60000)}min, ` +
     `toast ${TOAST_ENABLED ? "on" : "off"}, webhook ${WEBHOOK ? WEBHOOK_FORMAT : "not configured"}`
 );
 
@@ -453,3 +567,10 @@ process.on("unhandledRejection", (err) => log("unhandled rejection:", err?.messa
 
 await tick();
 setInterval(() => { void tick(); }, INTERVAL_MS);
+
+// The asset fleet on its own slow cadence, offset so it never coincides with a
+// bridge/tunnel tick. First run is delayed so startup isn't a spawn storm.
+setTimeout(() => {
+  void assetTick();
+  setInterval(() => { void assetTick(); }, ASSET_CHECK_INTERVAL_MS);
+}, 90_000).unref();
