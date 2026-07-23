@@ -2,6 +2,10 @@ node_modules/
 dist/
 *.log
 
+# Transient cross-process advisory locks (src/file-lock.ts) around data/*.json
+# writes — created and removed at runtime, never meant to persist.
+*.lock
+
 # Secrets — research-mcp API keys. Only .env.example is committed.
 .env
 
@@ -14,6 +18,19 @@ dist/
 #   */profile.json    — saved homebuyer / jobhunt personal profile
 #   work-context.json — saved employer stack and constraints
 data/cases.json
+data/cases-archive.json
+
+# Local backup runs (backup-data.mjs). Not a substitute for an off-drive copy.
+backups/
 homebuyer-mcp/data/profile.json
 jobhunt-mcp/data/profile.json
 polymath-mcp/data/work-context.json
+
+# OAuth server state — registered clients and hashed tokens.
+bridge/oauth-state.json
+
+# Asset registry — recreated from registry.example.json on first run. Kept out
+# of git because AssetConfig.env is a general mechanism for per-asset secrets
+# (API keys etc.); a future recruit_asset/update_asset call could write a real
+# key into this file, and this repo is public. Don't put it back in git.
+data/registry.json
