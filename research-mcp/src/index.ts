@@ -70,10 +70,11 @@ server.registerTool(
   {
     title: "Multi-Provider Search",
     description:
-      "Search the web across every available provider at once. Results are deduplicated by URL and " +
-      "ranked by corroboration — a URL that several independent engines return is a stronger lead than " +
-      "any single engine's top hit. Use this for quick reconnaissance; use `research` when you want " +
-      "page content fetched too.",
+      "Search the web across every available provider at once. Results are deduplicated by URL. When two " +
+      "or more independent web indexes are configured they are ranked by corroboration (a URL several " +
+      "engines return is a stronger lead); with only one, the output says so plainly rather than " +
+      "reporting a corroboration score that cannot vary. Use this for quick reconnaissance; use " +
+      "`research` when you want page content fetched too.",
     // `search` takes "query" and its sibling `research` takes "question" — two
     // near-synonyms for the same thing on two tools in the SAME server. Callers
     // swapped them 5 times in the real case log (4 on research, 1 here), each
@@ -96,7 +97,7 @@ server.registerTool(
       if (!query) {
         return { ...textResult(`BOTTOM LINE: nothing to search — pass "query" (this tool's parameter) with the text to search for.`), isError: true };
       }
-      const { results, providerErrors } = await multiSearch(query, providers, max_per_provider);
+      const { results, providerErrors, corroborationMeaningful } = await multiSearch(query, providers, max_per_provider);
       if (results.length === 0) {
         return textResult(
           `BOTTOM LINE: no results for "${query}".\n\n` +
@@ -109,10 +110,17 @@ server.registerTool(
       // as this call's headline — without it, every search result falls back to
       // the caller re-reading the full result list instead of the one-line digest.
       const top = results[0];
-      const bottomLine = `BOTTOM LINE: ${results.length} result(s) for "${query}" — top: ${top.title} (${top.corroboration}x corroborated) ${top.url}`;
-      const lines = results.map(
-        (r) =>
-          `- ${r.title}\n  ${r.url}\n  [${r.corroboration}x: ${r.providers.join(", ")}] ${r.snippet}`.trimEnd()
+      // Only claim corroboration when it could possibly be above 1. With a
+      // single web index every score is 1 by construction, and printing
+      // "(1x corroborated)" on every result reads as evidence of agreement
+      // when it is evidence of nothing.
+      const bottomLine = corroborationMeaningful
+        ? `BOTTOM LINE: ${results.length} result(s) for "${query}" — top: ${top.title} (${top.corroboration}x corroborated) ${top.url}`
+        : `BOTTOM LINE: ${results.length} result(s) for "${query}" — top: ${top.title} ${top.url}. NOT cross-checked: only one web index is active, so these are one engine's ranking, not a corroborated consensus.`;
+      const lines = results.map((r) =>
+        corroborationMeaningful
+          ? `- ${r.title}\n  ${r.url}\n  [${r.corroboration}x: ${r.providers.join(", ")}] ${r.snippet}`.trimEnd()
+          : `- ${r.title}\n  ${r.url}\n  [${r.providers.join(", ")}] ${r.snippet}`.trimEnd()
       );
       const footer = providerErrors.length ? `\n\nProvider errors: ${providerErrors.join("; ")}` : "";
       return textResult(`${bottomLine}\n\n${lines.join("\n")}${footer}`);
@@ -227,7 +235,7 @@ server.registerTool(
       const leads = dossier.unfetchedLeads.length
         ? `FOLLOW-UP LEADS (not yet fetched — use fetch_page to pursue):\n` +
           dossier.unfetchedLeads
-            .map((l) => `- ${l.title} — ${l.url} [${l.corroboration}x]`)
+            .map((l) => (dossier.corroborationMeaningful ? `- ${l.title} — ${l.url} [${l.corroboration}x]` : `- ${l.title} — ${l.url}`))
             .join("\n")
         : "";
 
@@ -237,7 +245,11 @@ server.registerTool(
       // cases and callers had to re-read the full ~18KB dossier instead of the
       // cheap digest. This line is what fixes that.
       const topSource = dossier.sources[0];
-      const bottomLine = `BOTTOM LINE: found ${dossier.sources.length} corroborated source(s) for "${question}" — top: ${topSource.title} (${topSource.corroboration}x) ${topSource.url}`;
+      // "corroborated" was a lie whenever only one web index is active, which
+      // is every dossier in the log to date: 146 of 146 sources scored 1x.
+      const bottomLine = dossier.corroborationMeaningful
+        ? `BOTTOM LINE: found ${dossier.sources.length} corroborated source(s) for "${question}" — top: ${topSource.title} (${topSource.corroboration}x) ${topSource.url}`
+        : `BOTTOM LINE: found ${dossier.sources.length} source(s) for "${question}" — top: ${topSource.title} ${topSource.url}. NOT cross-checked: one web index is active, so treat agreement between these sources as unverified.`;
 
       const report = [
         bottomLine,
@@ -252,7 +264,7 @@ server.registerTool(
         leads,
         ``,
         `SYNTHESIS GUIDANCE: Answer the question from the sources above, citing which source supports ` +
-          `each claim. Where sources disagree, say so and weigh corroboration. For every problem or ` +
+          `each claim. Where sources disagree, say so. For every problem or ` +
           `blocker identified, propose at least one actionable solution or next step — if the sources ` +
           `only describe the problem, use the follow-up leads to research the fix.`,
       ]

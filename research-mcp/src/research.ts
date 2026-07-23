@@ -1,4 +1,4 @@
-import { activeProviders, type SearchResult } from "./providers.js";
+import { activeProviders, corroborationPossible, type SearchResult } from "./providers.js";
 import { fetchPage, type PageExtract } from "./extract.js";
 
 export interface RankedResult extends SearchResult {
@@ -38,7 +38,7 @@ export async function multiSearch(
   query: string,
   requestedProviders?: string[],
   maxPerProvider = 8
-): Promise<{ results: RankedResult[]; providerErrors: string[] }> {
+): Promise<{ results: RankedResult[]; providerErrors: string[]; corroborationMeaningful: boolean }> {
   const providers = activeProviders(requestedProviders);
   const settled = await Promise.allSettled(providers.map((p) => p.search(query, maxPerProvider)));
 
@@ -68,13 +68,19 @@ export async function multiSearch(
   });
 
   const results = [...byUrl.values()].sort((a, b) => b.corroboration - a.corroboration);
-  return { results, providerErrors };
+  // With fewer than two independent web indexes every score is 1 by
+  // construction, so the sort above is sorting by a constant. Say so rather
+  // than presenting "1x corroborated" as if it were evidence.
+  return { results, providerErrors, corroborationMeaningful: corroborationPossible(providers) };
 }
 
 export interface Dossier {
   question: string;
   providersUsed: string[];
   providerErrors: string[];
+  /** False when fewer than two independent web indexes are active, in which
+   * case every corroboration score is 1 and the ranking carries no signal. */
+  corroborationMeaningful: boolean;
   sources: Array<{
     title: string;
     url: string;
@@ -106,7 +112,7 @@ export async function buildDossier(
   excerptChars = DEFAULT_EXCERPT_CHARS
 ): Promise<Dossier> {
   const providers = activeProviders(requestedProviders);
-  const { results, providerErrors } = await multiSearch(question, requestedProviders);
+  const { results, providerErrors, corroborationMeaningful } = await multiSearch(question, requestedProviders);
 
   const toFetch = results.slice(0, Math.min(fetchTop, 5));
   const fetched = await Promise.allSettled(toFetch.map((r) => fetchPage(r.url, excerptChars)));
@@ -138,6 +144,7 @@ export async function buildDossier(
     question,
     providersUsed: providers.map((p) => p.name),
     providerErrors,
+    corroborationMeaningful,
     sources,
     unfetchedLeads: results.slice(toFetch.length, toFetch.length + 7),
   };

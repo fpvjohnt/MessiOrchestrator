@@ -50,6 +50,7 @@ import { readMarket as kaRead, mythVsReality as kaMyth } from "./kalshi-mcp/dist
 import { priceCheck as kaPriceCheck, computePriceCheck as kaCompute, orderFee as kaOrderFee } from "./kalshi-mcp/dist/math.js";
 import { checkKalshi as kaCheck, kalshiVerdict as kaVerdict } from "./kalshi-mcp/dist/verify.js";
 import { dollarsToCents, secFilings, kalshiMarkets } from "./research-mcp/dist/data-sources.js";
+import { corroborationPossible, ALL_PROVIDERS } from "./research-mcp/dist/providers.js";
 import { assertPublicUrl } from "./research-mcp/dist/ssrf-guard.js";
 import { howTo as apHowTo, debug as apDebug, mythVsReality as apMyth } from "./apiforge-mcp/dist/toolkit.js";
 import { SUBJECTS, resolveSubject } from "./education-mcp/dist/subjects.js";
@@ -689,6 +690,31 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
     { asset: "research", tool: "research", arguments: {}, result: { content: [{ type: "text", text: "BOTTOM LINE: nothing found." }] }, timestamp: "2026-01-01T00:00:30Z" },
   ]));
   check("synthesis flags 'no sources' even on a research-only case", researchOnly.includes("No sources cited"), researchOnly);
+}
+
+// ── 14a2. Corroboration must not be claimed when it cannot vary ─────────────
+// The research asset ranked by "cross-provider corroboration" and printed a
+// score on every result. Measured over 63 real dossiers and 146 sources: the
+// score was 1 for every single one, 0.0% above 1. Only DuckDuckGo and
+// Wikipedia are active, and Wikipedia can only ever return wikipedia.org URLs
+// — it cannot corroborate another index. So the ranking sorted by a constant
+// while advertising agreement that was structurally impossible.
+{
+  const web = (name) => ({ name, webIndex: true, availability: () => ({ available: true, note: "" }), search: async () => [] });
+  const single = (name) => ({ ...web(name), webIndex: false });
+  check("corroboration needs TWO web indexes", corroborationPossible([web("a"), web("b")]));
+  check("one web index alone is not corroboration", !corroborationPossible([web("a")]));
+  check("a web index + a single-source is not corroboration", !corroborationPossible([web("duckduckgo"), single("wikipedia")]));
+  check("two single-source providers are not corroboration", !corroborationPossible([single("a"), single("b")]));
+  // The live default set is exactly the case that was being misreported.
+  const live = ALL_PROVIDERS.filter((p) => p.availability().available);
+  check("every provider declares whether it is a web index", ALL_PROVIDERS.every((p) => typeof p.webIndex === "boolean"));
+  check("wikipedia is not counted as a web index", ALL_PROVIDERS.find((p) => p.name === "wikipedia")?.webIndex === false);
+  check(
+    "with the current keyless setup, corroboration is honestly reported as unavailable",
+    corroborationPossible(live) === false,
+    `active: ${live.map((p) => p.name).join(", ")}`
+  );
 }
 
 // ── 14b1. No tag may be claimed by two active assets ────────────────────────

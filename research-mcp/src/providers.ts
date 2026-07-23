@@ -7,9 +7,32 @@ export interface SearchResult {
 
 export interface Provider {
   name: string;
+  /**
+   * True for a general WEB INDEX that can independently surface any URL.
+   * False for a single-source provider like Wikipedia, which only ever returns
+   * its own pages.
+   *
+   * This distinction is what makes the corroboration score mean anything. Two
+   * web indexes returning the same URL is real evidence; Wikipedia and
+   * DuckDuckGo "agreeing" is not possible in the first place, because
+   * Wikipedia cannot return a non-Wikipedia URL. Measured over 63 real
+   * dossiers and 146 sources: corroboration was 1 for every single one, 0.0%
+   * above 1 — the ranking was sorting by a constant while every result
+   * advertised "(1x corroborated)" as if it were a finding.
+   */
+  webIndex: boolean;
   /** Why the provider is or isn't usable right now (missing key, etc.). */
   availability(): { available: boolean; note: string };
   search(query: string, maxResults: number): Promise<SearchResult[]>;
+}
+
+/**
+ * Can corroboration mean anything with this provider set? It needs at least
+ * two independent web indexes. With one, every score is 1 by construction and
+ * reporting it is noise dressed as evidence.
+ */
+export function corroborationPossible(providers: Provider[]): boolean {
+  return providers.filter((p) => p.webIndex).length >= 2;
 }
 
 const USER_AGENT = "research-mcp/0.1 (+local MCP server)";
@@ -74,6 +97,7 @@ async function getJson(url: string, init?: RequestInit): Promise<any> {
 // ---------------------------------------------------------------------------
 const duckduckgo: Provider = {
   name: "duckduckgo",
+  webIndex: true,
   availability: () => ({ available: true, note: "no API key required" }),
   async search(query, maxResults) {
     const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
@@ -133,6 +157,9 @@ const duckduckgo: Provider = {
 // ---------------------------------------------------------------------------
 const wikipedia: Provider = {
   name: "wikipedia",
+  // Single-source: it can only ever return wikipedia.org URLs, so it can
+  // never corroborate another index and must not count toward corroboration.
+  webIndex: false,
   availability: () => ({ available: true, note: "no API key required" }),
   async search(query, maxResults) {
     const data = await getJson(
@@ -152,6 +179,7 @@ const wikipedia: Provider = {
 // ---------------------------------------------------------------------------
 const brave: Provider = {
   name: "brave",
+  webIndex: true,
   availability: () =>
     process.env.BRAVE_API_KEY
       ? { available: true, note: "BRAVE_API_KEY set" }
@@ -175,6 +203,7 @@ const brave: Provider = {
 // ---------------------------------------------------------------------------
 const tavily: Provider = {
   name: "tavily",
+  webIndex: true,
   availability: () =>
     process.env.TAVILY_API_KEY
       ? { available: true, note: "TAVILY_API_KEY set" }
@@ -201,6 +230,7 @@ const tavily: Provider = {
 // ---------------------------------------------------------------------------
 const google: Provider = {
   name: "google",
+  webIndex: true,
   availability: () =>
     process.env.GOOGLE_API_KEY && process.env.GOOGLE_CSE_ID
       ? { available: true, note: "GOOGLE_API_KEY + GOOGLE_CSE_ID set" }
