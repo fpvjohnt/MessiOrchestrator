@@ -21,6 +21,7 @@ import { withFileLock, acquireCrossProcessLock } from "./dist/file-lock.js";
 // Case-archiving selection. Pure by construction — archive-cases.mjs itself
 // runs on import, so the logic has to live apart from it to be testable at all.
 import { isArchivable, partitionCases, mergeArchive, analyzeStore, suggestCutoffs } from "./archive-logic.mjs";
+import { expectedForCase, PROBE } from "./caselog-eval.mjs";
 // The one .env parser the bridge and supervisor share. They disagreeing about a
 // setting is what made MCP_BRIDGE_PORT a false-outage generator.
 import { parseEnv, applyEnv } from "./bridge/load-env.mjs";
@@ -698,20 +699,38 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
 // one label no self-authored test can produce). These assert the SHAPE the
 // caselog harness depends on, without spinning up the file-backed store.
 {
-  // A case labelled with ground truth must be judged against THAT, not against
-  // which assets happened to get called. This mirrors caselog-eval's selection.
-  const labelledCase = { objective: "x", shouldHaveRouted: ["lawguide"], log: [{ asset: "research", tool: "research", result: { content: [{ text: "ok" }] } }] };
-  const expected = Array.isArray(labelledCase.shouldHaveRouted) && labelledCase.shouldHaveRouted.length
-    ? labelledCase.shouldHaveRouted
-    : ["proxy-would-go-here"];
-  check("caselog: ground-truth label wins over the used-assets proxy", expected[0] === "lawguide");
+  // These exercise the REAL selection imported from caselog-eval.mjs
+  // (expectedForCase), not literals asserted against themselves. If that
+  // label-vs-proxy precedence breaks, these fail — which the previous
+  // tautological versions ("kalshi"[0] === "kalshi") structurally could not.
+
+  // Ground truth wins over the used-assets proxy: the label says lawguide even
+  // though the only successful call was research.
+  const labelled = expectedForCase({ objective: "x", shouldHaveRouted: ["lawguide"], log: [{ asset: "research", result: { content: [{ text: "ok" }] } }] });
+  check("caselog: ground-truth label wins over the used-assets proxy", labelled.source === "label" && labelled.expected[0] === "lawguide", JSON.stringify(labelled));
 
   // A label can name an asset that was NEVER called — the proxy structurally
-  // cannot, which is the whole reason the label is worth more.
-  const missedEntirely = { objective: "y", shouldHaveRouted: ["kalshi"], log: [] };
-  check("caselog: a label survives an empty log (proxy would drop the case)", missedEntirely.shouldHaveRouted[0] === "kalshi");
+  // cannot. An empty log makes the proxy skip the case; the label survives it.
+  const missed = expectedForCase({ objective: "y", shouldHaveRouted: ["kalshi"], log: [] });
+  check("caselog: a label survives an empty log (proxy would drop the case)", missed.source === "label" && missed.expected[0] === "kalshi", JSON.stringify(missed));
 
-  // The Case type carries both new optional fields.
+  // Proxy path: with no label, expected = assets whose call did not fail.
+  const proxy = expectedForCase({ objective: "z", log: [{ asset: "nestegg", result: {} }, { asset: "research", result: {} }] });
+  check("caselog: proxy uses successfully-called assets", proxy.source === "proxy" && proxy.expected.includes("nestegg") && proxy.expected.includes("research"), JSON.stringify(proxy));
+
+  // A failed call is not evidence the router chose well — both error shapes drop.
+  const failed = expectedForCase({ objective: "z", log: [{ asset: "kalshi", error: "boom" }, { asset: "lawguide", result: { isError: true } }, { asset: "nestegg", result: {} }] });
+  check("caselog: proxy drops failed calls (error and isError)", failed.expected.length === 1 && failed.expected[0] === "nestegg", JSON.stringify(failed));
+
+  // No label and no successful call → the case is skipped, not graded as a miss.
+  const allFailed = expectedForCase({ objective: "z", log: [{ asset: "kalshi", error: "boom" }] });
+  check("caselog: a case with no successful call is skipped", allFailed.skip === "empty", JSON.stringify(allFailed));
+
+  // Probe/smoke objectives are filtered out by the shared PROBE regex.
+  check("caselog: probe objectives are skipped", expectedForCase({ objective: "smoke test one", log: [] }).skip === "probe");
+  check("caselog: PROBE regex matches probes, not real questions", PROBE.test("demo something") && !PROBE.test("what is the tallest building"));
+
+  // The Case type still carries both feedback-loop fields.
   const sample = { id: "1", objective: "o", assignedAssets: [], status: "open", openedAt: "t", log: [], routingRationale: "why", shouldHaveRouted: ["a"] };
   check("Case carries routingRationale", sample.routingRationale === "why");
   check("Case carries shouldHaveRouted", Array.isArray(sample.shouldHaveRouted));

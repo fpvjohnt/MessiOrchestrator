@@ -31,7 +31,15 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
+REM See install-backup-task.cmd for the rationale: schtasks defaults skip the job
+REM silently on battery/sleep with no catch-up. Fix that via PowerShell. The
+REM archive MUST catch up — if it is skipped, cases.json keeps growing unbounded
+REM (~90 KB/day), which is the exact problem this task exists to prevent.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Hours 1); Set-ScheduledTask -TaskName '%TASK%' -Settings $s | Out-Null"
+if %errorlevel% neq 0 echo WARNING: task registered but battery/catch-up settings did not apply.
+
 echo.
-echo Registered. It will run daily at 03:30 and append to logs\archive.log.
+echo Registered. It will run daily at 03:30 (catches up on next wake if missed)
+echo and append to logs\archive.log.
 echo Run it once now with:  schtasks /run /tn "%TASK%"
 exit /b 0

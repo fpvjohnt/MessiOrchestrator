@@ -28,8 +28,16 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
+REM schtasks can't set catch-up / battery behaviour, and its defaults are wrong
+REM for a laptop: DisallowStartIfOnBatteries=True and StartWhenAvailable=False
+REM mean that if the machine is asleep or on battery at 03:45 the backup simply
+REM never runs and never catches up — a silent skip with no log line. Apply the
+REM right settings via PowerShell so a missed window runs on next wake instead.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Hours 1); Set-ScheduledTask -TaskName '%TASK%' -Settings $s | Out-Null"
+if %errorlevel% neq 0 echo WARNING: task registered but battery/catch-up settings did not apply.
+
 echo.
-echo Registered. It will run daily at 03:45 and append to logs\backup.log.
-echo For off-drive safety, set MCP_BACKUP_DIR in .env to a OneDrive/Dropbox folder.
+echo Registered. It will run daily at 03:45 (catches up on next wake if missed)
+echo and append to logs\backup.log. MCP_BACKUP_DIR in .env points backups off-drive.
 echo Run it once now with:  schtasks /run /tn "MCP Backup Data"
 exit /b 0
