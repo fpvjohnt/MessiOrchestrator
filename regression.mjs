@@ -9,7 +9,15 @@
 // Coverage derives from the source of truth where possible: the title-index
 // test reads CLUSTERS, so every title you add is automatically checked.
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, mkdtemp, writeFile, utimes, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+// The cross-process advisory lock around data/*.json. acquireCrossProcessLock
+// is exported for these tests specifically: withFileLock's in-memory Mutex
+// serializes same-key callers before they reach the disk, so a single process
+// cannot otherwise reach the contention paths that matter here.
+import { withFileLock, acquireCrossProcessLock } from "./dist/file-lock.js";
 import { CLUSTERS, resolveCluster } from "./polymath-mcp/dist/clusters.js";
 import { buildIt } from "./polymath-mcp/dist/build.js";
 import { askTheExpert } from "./polymath-mcp/dist/consult.js";
@@ -732,6 +740,161 @@ for (const [name, out] of START_HERE) {
     }
   }
   check("CRLF check actually found Windows scripts to check", checkedAny);
+}
+
+// ── 21. Cross-process file lock: ownership, heartbeat, reclamation ─────────
+// cases.json holds addresses and legal/medical questions and is written by two
+// real OS processes at once (Claude Desktop's stdio orchestrator, and the
+// orchestrator each bridge session spawns). The lock is the only thing keeping
+// their read-modify-write cycles apart, and its failure mode is silent: two
+// writers, last one wins, nothing logged.
+//
+// Timings come from the environment so these stay millisecond tests instead of
+// sitting through a 10-second stale window.
+{
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const saved = {
+    stale: process.env.MCP_LOCK_STALE_MS,
+    beat: process.env.MCP_LOCK_HEARTBEAT_MS,
+    timeout: process.env.MCP_LOCK_TIMEOUT_MS,
+    retry: process.env.MCP_LOCK_RETRY_MS,
+  };
+  const dir = await mkdtemp(join(tmpdir(), "mcp-lock-test-"));
+  const key = join(dir, "store.json");
+  const lockPath = `${key}.lock`;
+
+  try {
+    process.env.MCP_LOCK_RETRY_MS = "10";
+    process.env.MCP_LOCK_TIMEOUT_MS = "250";
+    process.env.MCP_LOCK_STALE_MS = "120";
+
+    // ── the happy path ──
+    process.env.MCP_LOCK_HEARTBEAT_MS = "100000"; // long enough never to fire
+    {
+      const release = await acquireCrossProcessLock(key);
+      check("acquire creates the lock file", existsSync(lockPath));
+      await release();
+      check("release removes the lock file", !existsSync(lockPath));
+    }
+
+    // ── the ownership bug ──
+    // release() used to unlink unconditionally. Once a stale sweep handed the
+    // lock to someone else, the original holder's late release deleted the NEW
+    // holder's lock — putting two writers into the store at the same time.
+    {
+      const releaseA = await acquireCrossProcessLock(key);
+      const tokenA = await readFile(lockPath, "utf-8");
+      // Age A's lock past the stale window, which is what a dead holder looks
+      // like from the outside. A's heartbeat is configured never to fire here.
+      const old = new Date(Date.now() - 60_000);
+      await utimes(lockPath, old, old);
+
+      const releaseB = await acquireCrossProcessLock(key);
+      const tokenB = await readFile(lockPath, "utf-8");
+      check("a stale lock is reclaimed by the next acquirer", tokenB !== tokenA, "token unchanged");
+      check("reclaimed lock carries a fresh token", tokenB.length > 0);
+
+      await releaseA(); // A finally finishes, long after being declared dead
+      check("a late release does not delete the new holder's lock", existsSync(lockPath));
+      check(
+        "the new holder's token survives a late release",
+        existsSync(lockPath) && (await readFile(lockPath, "utf-8")) === tokenB
+      );
+
+      await releaseB();
+      check("the true holder can still release", !existsSync(lockPath));
+    }
+
+    // ── heartbeat: a live holder is not declared dead ──
+    // Before the heartbeat, mtime was written once at creation, so ANY
+    // operation slower than the stale window had its lock stolen mid-write.
+    {
+      process.env.MCP_LOCK_HEARTBEAT_MS = "30";
+      process.env.MCP_LOCK_STALE_MS = "150";
+      process.env.MCP_LOCK_TIMEOUT_MS = "200";
+      const releaseC = await acquireCrossProcessLock(key);
+      await sleep(320); // well past the stale window, but C is alive
+      let stolen = false;
+      try {
+        const releaseD = await acquireCrossProcessLock(key);
+        stolen = true;
+        await releaseD();
+      } catch {
+        /* timing out is the correct outcome: C still holds it */
+      }
+      check("a live holder's lock is not stolen after the stale window", !stolen);
+      await releaseC();
+      check("holder still owns its lock after heartbeating", !existsSync(lockPath));
+    }
+
+    // ── a genuinely abandoned lock is still reclaimed ──
+    // The heartbeat must not make a crashed holder's lock immortal.
+    {
+      process.env.MCP_LOCK_STALE_MS = "120";
+      process.env.MCP_LOCK_HEARTBEAT_MS = "100000";
+      await writeFile(lockPath, "dead-process-token", "utf-8");
+      const old = new Date(Date.now() - 60_000);
+      await utimes(lockPath, old, old);
+      const releaseE = await acquireCrossProcessLock(key);
+      check(
+        "a lock abandoned by a dead process is reclaimed",
+        (await readFile(lockPath, "utf-8")) !== "dead-process-token"
+      );
+      await releaseE();
+    }
+
+    // ── contention that is NOT stale times out, and says who holds it ──
+    {
+      process.env.MCP_LOCK_STALE_MS = "100000";
+      process.env.MCP_LOCK_TIMEOUT_MS = "120";
+      const releaseF = await acquireCrossProcessLock(key);
+      let message = "";
+      try {
+        const releaseG = await acquireCrossProcessLock(key);
+        await releaseG();
+      } catch (err) {
+        message = err?.message ?? "";
+      }
+      check("contention on a live lock times out", message.includes("Timed out"), message || "no error thrown");
+      check("the timeout names the store", message.includes("store.json"), message);
+      await releaseF();
+    }
+
+    // ── withFileLock still serializes callers inside one process ──
+    {
+      process.env.MCP_LOCK_STALE_MS = "100000";
+      process.env.MCP_LOCK_TIMEOUT_MS = "2000";
+      const order = [];
+      await Promise.all([
+        withFileLock(key, async () => {
+          order.push("a-start");
+          await sleep(30);
+          order.push("a-end");
+        }),
+        withFileLock(key, async () => {
+          order.push("b-start");
+          order.push("b-end");
+        }),
+      ]);
+      check(
+        "withFileLock does not interleave same-key tasks",
+        order.join(",") === "a-start,a-end,b-start,b-end",
+        order.join(",")
+      );
+      check("withFileLock leaves no lock file behind", !existsSync(lockPath));
+    }
+  } finally {
+    for (const [name, value] of [
+      ["MCP_LOCK_STALE_MS", saved.stale],
+      ["MCP_LOCK_HEARTBEAT_MS", saved.beat],
+      ["MCP_LOCK_TIMEOUT_MS", saved.timeout],
+      ["MCP_LOCK_RETRY_MS", saved.retry],
+    ]) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────
