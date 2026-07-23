@@ -29,6 +29,7 @@ import { CLUSTERS, resolveCluster } from "./polymath-mcp/dist/clusters.js";
 import { buildIt } from "./polymath-mcp/dist/build.js";
 import { askTheExpert } from "./polymath-mcp/dist/consult.js";
 import { selectAssets } from "./dist/router.js";
+import { needsResearchShape } from "./dist/router.js";
 import { suggestTool, describeUnknownTool, nameSimilarity } from "./dist/tool-suggest.js";
 import { checkAssets, renderHealth } from "./dist/health.js";
 import { synthesizeCase, isFailed } from "./dist/synthesis.js";
@@ -734,6 +735,30 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
   const sample = { id: "1", objective: "o", assignedAssets: [], status: "open", openedAt: "t", log: [], routingRationale: "why", shouldHaveRouted: ["a"] };
   check("Case carries routingRationale", sample.routingRationale === "why");
   check("Case carries shouldHaveRouted", Array.isArray(sample.shouldHaveRouted));
+}
+
+// ── 14a1b. needsResearchShape: long look-it-up objectives, never the golden set ─
+// The verifier now also rides along on long, messy objectives that name things
+// to look up but carry no freshness keyword. The safety property is the
+// >=15-word gate: it must NEVER fire on a golden-length question, which is how
+// clean-hit stays protected. These assert both the gate and each shape signal.
+{
+  // The safety guarantee: nothing shorter than 15 words can trigger it, so no
+  // golden question (max 14 words) can ever gain a verifier from this path.
+  check("researchShape: a short objective never fires (protects golden)", needsResearchShape("evaluate Acme Corp against Globex Inc for me") === false);
+  check("researchShape: even with every signal, <15 words stays false", needsResearchShape("vet Acme Corp against globex.com now") === false);
+
+  const long = (tail) => `please take a careful look at this and then ${tail}`; // 9-word prefix -> pushes over 15
+  // Imperative diligence lead verb (15 words — just over the gate).
+  check("researchShape: lead verb 'vet' on a long objective fires", needsResearchShape("vet this company immediately as a potential enterprise customer for our sales team next quarter") === true);
+  // A URL / bare host to go look at.
+  check("researchShape: a bare host on a long objective fires", needsResearchShape(long("compare their pricing on competitor-site.com with what we currently pay")) === true);
+  // "X against Y" comparison.
+  check("researchShape: 'against' comparison on a long objective fires", needsResearchShape(long("score our candidate against the three roles the client shortlisted")) === true);
+  // A run of named entities.
+  check("researchShape: a proper-noun run on a long objective fires", needsResearchShape("figure out whether the person named John Tapia Smith is a good fit for this role") === true);
+  // A long objective with none of the signals must NOT fire — no free verifier.
+  check("researchShape: a long objective with no shape signal stays false", needsResearchShape("i keep wondering about the way my grandmother used to cook this particular dish every winter") === false);
 }
 
 // ── 14a2. Corroboration must not be claimed when it cannot vary ─────────────

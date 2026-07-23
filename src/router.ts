@@ -214,6 +214,46 @@ export function needsFreshFacts(objective: string): boolean {
   return LOOKUP_PHRASES.some((p) => joined.includes(p));
 }
 
+// Objective-SHAPE signals for the live-lookup verifier, complementary to the
+// keyword signals above. The largest real-traffic miss class is LONG, messy
+// objectives that plainly need looking up — "Vet Sekai (Series A startup) as a
+// customer", "Evaluate John's fit against three LinkedIn postings" — but carry
+// no freshness/lookup KEYWORD, so needsFreshFacts never fired on them.
+//
+// Gated on LENGTH first, and that is the whole safety argument: golden
+// questions top out at 14 words, so requiring >= 15 means this can only ever
+// fire on long real objectives and CANNOT add a verifier to a golden question —
+// clean-hit is protected by construction, not by luck. Within a long objective,
+// any one shape signal is enough. Like needsFreshFacts, this only ever ADDS a
+// fallback verifier alongside the chosen specialists; it can never displace one
+// or change which specialist is primary.
+// Imperative lead verbs that mean "go find things out about the thing named
+// next" — the shape of a diligence/evaluation objective.
+const RESEARCH_LEAD_VERBS = new Set([
+  "vet", "evaluate", "assess", "analyze", "analyse", "appraise",
+  "audit", "diligence", "scrutinize", "profile",
+]);
+// A bare host like "sekai.com" or a full URL — a named thing to go look at.
+const URL_LIKE = /https?:\/\/|www\.|\b[a-z0-9][a-z0-9-]*\.(com|org|net|io|gov|ai|co|dev|app)\b/i;
+// A run of two or more Capitalised words — "Series A", "John Tapia", "LinkedIn
+// postings", "Sekai Inc". Named entities are the thing that has to be looked up,
+// and a long objective that names several of them is almost always a research
+// job. Only meaningful because of the >= 15-word gate: over short questions this
+// would fire on ordinary sentence-initial capitals; over a long objective a
+// multi-word proper-noun run is a real signal.
+const PROPER_NOUN_RUN = /\b[A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)+/;
+
+export function needsResearchShape(objective: string): boolean {
+  const words = objective.trim().split(/\s+/);
+  if (words.length < 15) return false; // golden max is 14 — never touches it
+  const first = (words[0] ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  if (RESEARCH_LEAD_VERBS.has(first)) return true;
+  if (URL_LIKE.test(objective)) return true;
+  if (/\bagainst\b/i.test(objective)) return true; // "score / evaluate X against Y"
+  if (PROPER_NOUN_RUN.test(objective)) return true;
+  return false;
+}
+
 export interface AssetSelection {
   assigned: string[];
   rationale: string;
@@ -294,10 +334,10 @@ export function selectAssets(
     const verifiers = fallbackAssets(assets)
       .map((a) => a.name)
       .filter((name) => !specialists.includes(name));
-    if (verifiers.length > 0 && needsFreshFacts(objective)) {
+    if (verifiers.length > 0 && (needsFreshFacts(objective) || needsResearchShape(objective))) {
       return {
         assigned: [...specialists, ...verifiers],
-        rationale: `${rationale}; + ${verifiers.join(", ")} (objective asks about current/verifiable facts — the specialists are offline and deterministic)`,
+        rationale: `${rationale}; + ${verifiers.join(", ")} (objective asks about current/verifiable facts, or is a long look-it-up objective — the specialists are offline and deterministic)`,
       };
     }
     return { assigned: specialists, rationale };
