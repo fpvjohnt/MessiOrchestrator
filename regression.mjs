@@ -744,6 +744,27 @@ for (const [name, out] of START_HERE) {
   }
 }
 
+// ── 19d. .env.example documents every setting that exists ──────────────────
+// A settings file the code has outgrown is worse than none: it reads like the
+// complete list, so a variable missing from it is one nobody knows they can
+// set. Derived from the source, so adding a new process.env.MCP_* read without
+// documenting it fails here rather than being discovered a year later.
+{
+  const sources = ["bridge/server.mjs", "bridge/supervisor.mjs", "backup-data.mjs", "src/file-lock.ts"];
+  const documented = await readFile(new URL("./.env.example", import.meta.url), "utf-8");
+  const found = new Set();
+  for (const rel of sources) {
+    const src = await readFile(new URL(`./${rel}`, import.meta.url), "utf-8");
+    // Both the direct form and the envMs("NAME", ...) / num("NAME", ...) helpers.
+    for (const m of src.matchAll(/process\.env\.(MCP_[A-Z0-9_]+)/g)) found.add(m[1]);
+    for (const m of src.matchAll(/\b(?:envMs|num)\(\s*"(MCP_[A-Z0-9_]+)"/g)) found.add(m[1]);
+  }
+  check("found MCP_* settings to check", found.size >= 10, `only ${found.size}`);
+  for (const name of [...found].sort()) {
+    check(`${name} is documented in .env.example`, documented.includes(name));
+  }
+}
+
 // ── 20. Windows scripts must be CRLF ───────────────────────────────────────
 // cmd.exe does not reject an LF-only batch file — it half-executes it, eating
 // leading characters until commands stop resolving ("netstat" → "tstat",

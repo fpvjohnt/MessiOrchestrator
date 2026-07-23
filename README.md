@@ -109,6 +109,14 @@ Requires Node.js 18+.
 npm run setup    # install + build the orchestrator and all 8 asset packages
 ```
 
+Copy `.env.example` to `.env` and set `MCP_BRIDGE_TOKEN` if you are running the
+HTTP bridge; every other setting has a working default and the file explains
+each one. Search API keys are separate — see `research-mcp/.env.example`.
+
+For running it day to day — what the supervisor watches, where the logs are,
+how alerts work, backup and restore, and rebuilding from scratch — see
+[OPERATIONS.md](OPERATIONS.md).
+
 **Just the orchestrator:**
 
 ```sh
