@@ -43,6 +43,10 @@ const PROBES = [
   { q: "score this Analytics Engineer posting against my resume profile", want: "jobhunt" },
   { q: "how do I go about posting bail for a friend", want: "lawguide", mustNot: "jobhunt" },
   { q: "what asset allocation fits my risk profile in retirement", want: "nestegg", mustNot: "jobhunt" },
+  // elevenlabs voice asset — routes on voice/tts/speech, not on generic 'audio'
+  // in an unrelated sense
+  { q: "convert this paragraph to speech with a natural voice", want: "elevenlabs" },
+  { q: "transcribe this audio recording into text", want: "elevenlabs" },
 ];
 
 let pass = 0;

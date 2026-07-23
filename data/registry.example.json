@@ -1090,5 +1090,32 @@
     "status": "active",
     "registeredAt": "2026-07-23T00:00:00.000Z",
     "env": {}
+  },
+  {
+    "name": "elevenlabs",
+    "description": "ElevenLabs voice tools: text-to-speech (natural narration and voiceover), speech-to-text transcription, and voice generation/cloning. Turns text into spoken audio and audio into text.",
+    "tags": [
+      "voice",
+      "tts",
+      "texttospeech",
+      "voiceover",
+      "narration",
+      "transcribe",
+      "transcription",
+      "stt",
+      "dictation",
+      "audio",
+      "elevenlabs"
+    ],
+    "transport": "stdio",
+    "command": "uvx",
+    "args": [
+      "elevenlabs-mcp"
+    ],
+    "cwd": "/path/to/John MCP",
+    "status": "active",
+    "registeredAt": "2026-07-23T21:00:00.000Z",
+    "fallback": false,
+    "env": {}
   }
 ]
