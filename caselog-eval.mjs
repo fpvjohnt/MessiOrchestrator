@@ -27,8 +27,9 @@
 // when run directly (npm run caselog); importing it has no side effects.
 
 import { readFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { selectAssets } from "./dist/router.js";
+import { warnIfStaleBuild } from "./build-freshness.mjs";
 
 // Smoke/probe objectives written BY this system's own tests, not by a user.
 // Explicit and printed, so the filter can be audited rather than trusted.
@@ -78,6 +79,8 @@ async function loadCases(name) {
 }
 
 async function main() {
+  // Standalone `npm run caselog` has no build step — warn if dist is behind src.
+  await warnIfStaleBuild(fileURLToPath(new URL(".", import.meta.url)));
   const registry = JSON.parse(await readFile(new URL("./data/registry.json", import.meta.url), "utf-8"));
   const all = [...(await loadCases("cases.json")), ...(await loadCases("cases-archive.json"))];
 

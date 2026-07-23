@@ -2,13 +2,18 @@
 // (regression.mjs proves consistency; this proves rightness against a labeled
 // key). Reports accuracy at the production thresholds, lists every miss and
 // noise case honestly, then sweeps the thresholds to check whether the
-// hand-picked defaults (floor 3, secondaryRatio 0.5) are actually optimal.
+// hand-picked defaults (floor 3, secondaryRatio 0.6) are actually optimal.
 //
 //   Run:  npm run golden   (after build:all)
 
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { selectAssets, DEFAULT_THRESHOLDS } from "./dist/router.js";
 import { GOLDEN } from "./golden-set.mjs";
+import { warnIfStaleBuild } from "./build-freshness.mjs";
+
+// Standalone `npm run golden` has no build step — warn if dist is behind src.
+await warnIfStaleBuild(fileURLToPath(new URL(".", import.meta.url)));
 
 const registry = JSON.parse(await readFile(new URL("./data/registry.json", import.meta.url), "utf-8"));
 
@@ -119,7 +124,7 @@ console.log(`\nNote: thresholds trade these three off against each other. Read a
 //
 // Clean-hit and rank-1 are gated too. Without them, the two metrics this
 // harness exists to protect could regress to zero without failing anything.
-// Floors sit a few points under the measured values (99/91/93) to leave room
+// Floors sit a few points under the measured values (100/98/96) to leave room
 // for honest label churn, not enough to hide a real regression.
 const GATES = [
   ["primary hit", base.primaryHits, 95],

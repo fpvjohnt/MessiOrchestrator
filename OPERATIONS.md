@@ -32,7 +32,7 @@ Startup folder
             └─ node bridge\supervisor.mjs   ← the watchdog
                  └─ bridge\start-all.cmd    ← only when something needs restarting
                       ├─ node bridge\server.mjs
-                      └─ cloudflared tunnel run --metrics 127.0.0.1:20241 mcp
+                      └─ cloudflared tunnel --metrics 127.0.0.1:20241 --no-autoupdate run mcp
 ```
 
 `supervise.vbs` exists because a shortcut set to "minimized" still flashes a
