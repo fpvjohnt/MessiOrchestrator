@@ -209,6 +209,50 @@ reached the cloudflared half. `.gitattributes` pins `eol=crlf` and
 `regression.mjs` asserts it, because that governs what git writes but not what
 an in-place edit leaves behind.
 
+## 11. Data maintenance
+
+Every `task_asset` call rewrites `data/cases.json` in full, so its size is a
+tax on every write. `archive-cases.mjs` bounds it by moving closed cases older
+than `--days` into `data/cases-archive.json`. Archived cases stay queryable —
+overseer's tools all take a `cases_path`, so point one at the archive.
+
+```sh
+npm run archive                 # default cutoff, applies
+node archive-cases.mjs --dry-run
+node archive-cases.mjs --days=7
+```
+
+**It runs daily at 03:30** via a per-user Scheduled Task, appending to
+`logs/archive.log`. Register or re-register with
+`bridge/install-archive-task.cmd`; remove with
+`schtasks /delete /tn "MCP Archive Cases" /f`.
+
+**The default cutoff is 14 days, not 90.** At 90 it selected nothing on the
+only system it runs on: 17 days of use, 143 cases, 1.5 MB, 94% of it task-log
+payloads, growing ~90 KB/day, oldest closed case 17 days old. It would have
+kept selecting nothing until day 90 — through exactly the window the bound is
+needed — while reporting success each time. Cases here close within hours.
+
+Two things no cutoff can reach, so the script reports both rather than
+silently carrying them forever:
+
+- **Cases left open.** Never archivable at any age; close them with
+  `close_case` if they are finished.
+- **Closed cases with no usable `closedAt`.** Invisible to every cutoff.
+
+Open cases are never auto-archived. One may be genuinely pending, and closing
+it on your behalf would invent an outcome the system never observed.
+
+**Two conventions the suite enforces**, both because their failure is silent:
+
+- Windows scripts are CRLF (`.gitattributes` + assertion). `cmd.exe`
+  half-executes an LF-only batch file, dropping leading characters until
+  commands stop resolving, and reports nothing.
+- Operational scripts print ASCII only. `logs/*.log` are read with
+  `Get-Content` and Notepad, which decode as ANSI and render a UTF-8 em dash
+  as `â€"` — in the files you open precisely when something is wrong. Fixing
+  the strings by hand did not hold; the next edit reintroduced them twice.
+
 ---
 
 *The pattern is domain-agnostic: swap the specialists and it works for anything —

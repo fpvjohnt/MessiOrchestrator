@@ -160,7 +160,7 @@ async function sendWebhook(alert) {
     const outcome = await attemptWebhook(alert);
     if (outcome.done) return;
     if (attempt < WEBHOOK_ATTEMPTS) {
-      log(`alert webhook attempt ${attempt} failed (${outcome.reason}) — retrying`);
+      log(`alert webhook attempt ${attempt} failed (${outcome.reason}) - retrying`);
       await sleep(WEBHOOK_RETRY_MS);
     } else {
       log(`alert webhook failed after ${WEBHOOK_ATTEMPTS} attempts: ${outcome.reason}`);
@@ -198,7 +198,7 @@ async function attemptWebhook(alert) {
       const res = await fetch(WEBHOOK, { ...init, signal: ac.signal });
       if (res.ok) return { done: true };
       if (res.status >= 500) return { done: false, reason: `HTTP ${res.status}` };
-      log(`alert webhook rejected the message: HTTP ${res.status} — check MCP_ALERT_WEBHOOK`);
+      log(`alert webhook rejected the message: HTTP ${res.status} - check MCP_ALERT_WEBHOOK`);
       return { done: true };
     } finally {
       clearTimeout(timer);

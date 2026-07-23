@@ -18,6 +18,9 @@ import { join } from "node:path";
 // serializes same-key callers before they reach the disk, so a single process
 // cannot otherwise reach the contention paths that matter here.
 import { withFileLock, acquireCrossProcessLock } from "./dist/file-lock.js";
+// Case-archiving selection. Pure by construction — archive-cases.mjs itself
+// runs on import, so the logic has to live apart from it to be testable at all.
+import { isArchivable, partitionCases, mergeArchive, analyzeStore, suggestCutoffs } from "./archive-logic.mjs";
 import { CLUSTERS, resolveCluster } from "./polymath-mcp/dist/clusters.js";
 import { buildIt } from "./polymath-mcp/dist/build.js";
 import { askTheExpert } from "./polymath-mcp/dist/consult.js";
@@ -713,6 +716,34 @@ for (const [name, out] of START_HERE) {
   }
 }
 
+// ── 19c. Operational scripts print ASCII ───────────────────────────────────
+// logs/*.log are read with Get-Content and Notepad, which decode as ANSI by
+// default and turn a UTF-8 em dash into "â€"" — in the files you open
+// precisely when something has gone wrong. Fixing the strings once did not
+// hold: the very next change to supervisor.mjs reintroduced two, and the
+// archive job's first real run wrote three more. It needs to be a rule the
+// suite enforces rather than one to remember.
+//
+// Non-ASCII in comments is fine and deliberate — nothing prints those.
+{
+  const operational = ["archive-cases.mjs", "archive-logic.mjs", "bridge/supervisor.mjs", "bridge/supervisor-logic.mjs"];
+  for (const rel of operational) {
+    const src = await readFile(new URL(`./${rel}`, import.meta.url), "utf-8");
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, "") // block and JSDoc comments
+      .replace(/(^|[^:])\/\/.*$/gm, "$1"); // line comments, but not "https://"
+    const offenders = code
+      .split("\n")
+      .map((line, i) => [i + 1, line])
+      .filter(([, line]) => /[^\x00-\x7F]/.test(line));
+    check(
+      `${rel} prints only ASCII (logs are read in ANSI viewers)`,
+      offenders.length === 0,
+      offenders.map(([n, l]) => `line ${n}: ${l.trim().slice(0, 60)}`).join(" | ")
+    );
+  }
+}
+
 // ── 20. Windows scripts must be CRLF ───────────────────────────────────────
 // cmd.exe does not reject an LF-only batch file — it half-executes it, eating
 // leading characters until commands stop resolving ("netstat" → "tstat",
@@ -894,6 +925,94 @@ for (const [name, out] of START_HERE) {
       else process.env[name] = value;
     }
     await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// ── 22. Case archiving: selection, exhaustiveness, dedup ───────────────────
+// This code moves your cases between files. The assertions that matter are the
+// boring ones — nothing lost, nothing duplicated, an open case never archived
+// — because every failure mode here is silent data movement.
+//
+// It also had a defect of omission: a 90-day default on a system whose oldest
+// closed case was 17 days old, so it selected nothing and reported success
+// while cases.json grew ~90 KB/day unbounded.
+{
+  const DAY = 24 * 60 * 60 * 1000;
+  const NOW = Date.parse("2026-07-23T00:00:00.000Z");
+  const daysAgo = (n) => new Date(NOW - n * DAY).toISOString();
+  const cutoff = (days) => NOW - days * DAY;
+  const mk = (id, over = {}) => ({ id, status: "closed", openedAt: daysAgo(40), closedAt: daysAgo(30), log: [], ...over });
+
+  // ── isArchivable ──
+  check("closed and older than the cutoff is archivable", isArchivable(mk("a"), cutoff(14)));
+  check("closed but newer than the cutoff is not", !isArchivable(mk("b", { closedAt: daysAgo(3) }), cutoff(14)));
+  // The invariant that protects work in progress.
+  check("an OPEN case is never archivable, however old", !isArchivable(mk("c", { status: "open", openedAt: daysAgo(400) }), cutoff(14)));
+  check("closed with no closedAt is not archivable", !isArchivable(mk("d", { closedAt: undefined }), cutoff(14)));
+  check("closed with an unparseable closedAt is not archivable", !isArchivable(mk("e", { closedAt: "last tuesday" }), cutoff(14)));
+  check("a case exactly at the cutoff is kept, not archived", !isArchivable(mk("f", { closedAt: new Date(cutoff(14)).toISOString() }), cutoff(14)));
+
+  // ── partitionCases: the exhaustiveness property ──
+  {
+    const cases = [
+      mk("old-closed", { closedAt: daysAgo(30) }),
+      mk("new-closed", { closedAt: daysAgo(1) }),
+      mk("open-ancient", { status: "open", openedAt: daysAgo(500), closedAt: undefined }),
+      mk("closed-undateable", { closedAt: "" }),
+      mk("old-closed-2", { closedAt: daysAgo(90) }),
+    ];
+    const { toArchive, toKeep } = partitionCases(cases, cutoff(14));
+    check("partition loses nothing", toArchive.length + toKeep.length === cases.length, `${toArchive.length}+${toKeep.length} vs ${cases.length}`);
+    const ids = [...toArchive, ...toKeep].map((c) => c.id).sort();
+    check("partition duplicates nothing", new Set(ids).size === ids.length, ids.join(","));
+    check("partition covers exactly the input", ids.join(",") === cases.map((c) => c.id).sort().join(","), ids.join(","));
+    check("partition archives only the old closed ones", toArchive.map((c) => c.id).sort().join(",") === "old-closed,old-closed-2", toArchive.map((c) => c.id).join(","));
+  }
+
+  // ── mergeArchive: dedup by id ──
+  // The write order is archive-first so a crash duplicates rather than loses.
+  // That is only recoverable if re-archiving the same case is a no-op.
+  {
+    const existing = [mk("x"), mk("y")];
+    const incoming = [mk("y"), mk("z")]; // y already archived by a crashed run
+    const { merged, added, skipped } = mergeArchive(existing, incoming);
+    check("merge skips ids already archived", skipped === 1, `skipped ${skipped}`);
+    check("merge adds only the new ones", added === 1, `added ${added}`);
+    check("merge produces no duplicate ids", new Set(merged.map((c) => c.id)).size === merged.length);
+    check("merge keeps existing entries first", merged.map((c) => c.id).join(",") === "x,y,z", merged.map((c) => c.id).join(","));
+    const rerun = mergeArchive(merged, incoming);
+    check("re-archiving the same batch is a no-op", rerun.added === 0 && rerun.merged.length === merged.length);
+  }
+
+  // ── analyzeStore: the report behind a run that archives nothing ──
+  {
+    const cases = [
+      mk("c1", { closedAt: daysAgo(17) }),
+      mk("c2", { closedAt: daysAgo(2) }),
+      mk("o1", { status: "open", openedAt: daysAgo(20), closedAt: undefined }),
+      mk("o2", { status: "open", openedAt: daysAgo(1), closedAt: undefined }),
+      mk("u1", { closedAt: "nonsense" }),
+    ];
+    const s = analyzeStore(cases, { nowMs: NOW, cutoffMs: cutoff(90), idleOpenDays: 14 });
+    check("analyze counts open and closed", s.openCount === 2 && s.closedCount === 3, `${s.openCount}/${s.closedCount}`);
+    check("analyze reports nothing archivable at a 90d cutoff", s.archivableCount === 0, `${s.archivableCount}`);
+    // This is the number that turns "Nothing to archive" into an explanation.
+    check("analyze knows the oldest closed age", s.oldestClosedDays === 17, `${s.oldestClosedDays}`);
+    check("analyze counts undateable closed cases", s.undateableCount === 1, `${s.undateableCount}`);
+    check("analyze flags long-open cases", s.idleOpen.length === 1 && s.idleOpen[0].id === "o1", JSON.stringify(s.idleOpen));
+    check("analyze reports a byte size", s.bytes > 0);
+
+    const suggestions = suggestCutoffs(cases, NOW);
+    const at14 = suggestions.find((o) => o.days === 14);
+    const at90 = suggestions.find((o) => o.days === 90);
+    check("suggestions find a cutoff that would move something", at14?.count === 1, JSON.stringify(suggestions));
+    check("suggestions report zero where nothing would move", at90?.count === 0, JSON.stringify(suggestions));
+  }
+
+  // ── an empty store must not throw ──
+  {
+    const s = analyzeStore([], { nowMs: NOW, cutoffMs: cutoff(14) });
+    check("empty store analyzes cleanly", s.total === 0 && s.oldestClosedDays === null && s.idleOpen.length === 0);
   }
 }
 
