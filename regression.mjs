@@ -609,11 +609,17 @@ check("kalshi: scope line defers portfolios to nestegg", kaStart().toLowerCase()
   check("kalshi: price_check says plainly when the fee eats the edge", kaPriceCheck({ your_probability: 51, market_price: 50 }).toLowerCase().includes("fee eats the edge"));
   check("kalshi: price_check surfaces the fee assumption", kaPriceCheck({ your_probability: 52, market_price: 50 }).includes("FEE ASSUMPTION"));
 }
-// Probability accepts 0-1 and 0-100 identically — a caller will use both.
+// Both inputs accept two units, and they disambiguate differently at exactly
+// 1. Found by feeding price_check a LIVE price from research: a real 1c
+// longshot was read as a $1.00 contract and reported "the market says 100%".
 check(
   "kalshi: probability accepts 0-1 and 0-100 alike",
   kaCompute({ your_probability: 0.55, market_price: 50 }).probability === kaCompute({ your_probability: 55, market_price: 50 }).probability
 );
+check("kalshi: market_price 1 means ONE CENT, not one dollar", kaCompute({ your_probability: 35, market_price: 1 }).price === 0.01);
+check("kalshi: market_price 0.63 (dollars) === 63 (cents)", kaCompute({ your_probability: 50, market_price: 0.63 }).price === kaCompute({ your_probability: 50, market_price: 63 }).price);
+check("kalshi: probability 1 means certainty, not one percent", kaCompute({ your_probability: 1, market_price: 50 }).probability === 1);
+check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ your_probability: 35, market_price: 1, contracts: 100 }).worthIt === true);
 
 // ── 14c. Structured data sources (sec_filings, kalshi_markets) ──────────────
 // This suite makes no network calls, so what is tested here is everything that

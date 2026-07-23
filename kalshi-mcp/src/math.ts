@@ -62,9 +62,28 @@ export interface PriceCheckResult {
   assumedFees: boolean;
 }
 
-/** Normalise a probability given as either 0-1 or 0-100. */
+// Both inputs accept two units, and the two disambiguate DIFFERENTLY at
+// exactly 1. That asymmetry is deliberate, and it is a real bug found by
+// feeding this tool a live price from research rather than a made-up one:
+//
+//   market_price = 1  must mean 1 CENT. A 1c longshot is an ordinary market —
+//   the live NYC temperature series returned exactly that — whereas a contract
+//   at $1.00 is already settled and nobody price-checks it. Reading it as
+//   $1.00 produced "the market says 100%", which is nonsense.
+//
+//   your_probability = 1 must mean 100%. Certainty is a meaningful estimate;
+//   someone who means 1% writes 0.01.
+//
+// So price treats >= 1 as cents, and probability treats > 1 as percent.
+
+/** Probability as either a 0-1 fraction or a 0-100 percentage. 1 = certainty. */
 function asProbability(n: number): number {
   return n > 1 ? n / 100 : n;
+}
+
+/** Price as either cents (63) or dollars (0.63). 1 means one CENT. */
+function asPrice(n: number): number {
+  return n >= 1 ? n / 100 : n;
 }
 
 /**
@@ -83,7 +102,7 @@ export function orderFee(price: number, contracts: number, coefficient: number, 
 }
 
 export function computePriceCheck(input: PriceCheckInput): PriceCheckResult {
-  const price = input.market_price > 1 ? input.market_price / 100 : input.market_price;
+  const price = asPrice(input.market_price);
   const probability = asProbability(input.your_probability);
   const contracts = Math.max(1, Math.floor(input.contracts ?? 1));
   const coefficient = input.fee_coefficient ?? ASSUMED_FEE_COEFFICIENT;
