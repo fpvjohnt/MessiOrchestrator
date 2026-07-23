@@ -51,6 +51,7 @@ import { TOPICS as KA_TOPICS, resolveTopic as kaResolve, explainTopic as kaExpla
 import { readMarket as kaRead, mythVsReality as kaMyth } from "./kalshi-mcp/dist/toolkit.js";
 import { priceCheck as kaPriceCheck, computePriceCheck as kaCompute, orderFee as kaOrderFee } from "./kalshi-mcp/dist/math.js";
 import { checkKalshi as kaCheck, kalshiVerdict as kaVerdict } from "./kalshi-mcp/dist/verify.js";
+import { liveMarket as kaLive } from "./kalshi-mcp/dist/live.js";
 import { dollarsToCents, secFilings, kalshiMarkets } from "./research-mcp/dist/data-sources.js";
 import { corroborationPossible, ALL_PROVIDERS } from "./research-mcp/dist/providers.js";
 import { assertPublicUrl } from "./research-mcp/dist/ssrf-guard.js";
@@ -587,6 +588,15 @@ check("kalshi: myth debunks '90c is free money'", kaMyth().toLowerCase().include
 check("kalshi: myth refuses 'regulated therefore legal for me'", kaMyth().toLowerCase().includes("not proof it's lawful"));
 check("kalshi: read_market puts the settlement rule before the price", kaRead("x").indexOf("SETTLEMENT RULE") < kaRead("x").indexOf("NOW COMPARE TO THE MARKET"));
 check("kalshi: scope line defers portfolios to nestegg", kaStart().toLowerCase().includes("nestegg"));
+// live_market: the offline-safety contract. An empty ticker returns BEFORE any
+// fetch, so this is network-free — it proves the tool always yields a BOTTOM
+// LINE and routes the caller to research rather than throwing or hanging when a
+// live price can't be had. (The real API path is exercised manually, not here.)
+{
+  const off = await kaLive("");
+  check("kalshi live_market: degrades offline with a BOTTOM LINE", off.includes("BOTTOM LINE") && /no live price/i.test(off), off);
+  check("kalshi live_market: points a failed lookup at research", off.toLowerCase().includes("research"));
+}
 
 // The fee is proportional to p*(1-p): largest at 50c, smaller at the extremes.
 // This SHAPE is the durable claim the whole fees_and_edge guidance rests on.

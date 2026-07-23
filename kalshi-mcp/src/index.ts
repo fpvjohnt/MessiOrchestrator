@@ -6,6 +6,7 @@ import { explainTopic, startHere } from "./topics.js";
 import { readMarket, mythVsReality } from "./toolkit.js";
 import { priceCheck } from "./math.js";
 import { checkKalshi, kalshiVerdict } from "./verify.js";
+import { liveMarket } from "./live.js";
 
 const server = new McpServer({ name: "kalshi", version: "0.1.0" });
 
@@ -92,6 +93,30 @@ server.registerTool(
   async (args) => {
     try {
       return textResult(priceCheck(args));
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.registerTool(
+  "live_market",
+  {
+    title: "Live Kalshi Market Price (keyless public API)",
+    description:
+      "Fetches the CURRENT price of one Kalshi event contract by ticker from the keyless public market-data API: YES/NO bid/ask, last price " +
+      "(which IS the implied probability in percent, after the house cut), volume, and open interest. This is the ONE live call in this " +
+      "asset; it degrades to the offline verify-via-research path if the network is unavailable, so it never blocks. Pair it with price_check " +
+      "on your OWN probability estimate — the market price is not the true probability, and a price near 90c is not 'nearly free money'.",
+    inputSchema: {
+      ticker: lookupKey.describe(
+        "The Kalshi market ticker, e.g. KXPRESPARTY-28-R. Get it from the Kalshi site's market URL, or from check_kalshi/research if you don't have it."
+      ),
+    },
+  },
+  async ({ ticker }) => {
+    try {
+      return textResult(await liveMarket(ticker));
     } catch (err) {
       return errorResult(err);
     }
