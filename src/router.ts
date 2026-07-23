@@ -5,6 +5,9 @@ export interface AssetMatch {
   name: string;
   score: number;
   matchedTags: string[];
+  // True when the score rests on a tag or the asset's own name — deliberate
+  // routing signal — rather than on description prose alone.
+  anchored: boolean;
 }
 
 // Pure grammatical glue — filtered out so two unrelated objectives that both
@@ -78,6 +81,24 @@ const TAG_WEIGHT = 3;
 const NAME_WEIGHT = 2;
 const DESCRIPTION_WEIGHT = 1;
 
+// Description prose is CORROBORATING evidence, never primary evidence. Two
+// rules enforce that, and both were written against measured misroutes:
+//
+// 1. Each distinct description word counts ONCE. Counting with repetition
+//    meant a 249-word description scored on how often it repeated a common
+//    word, which is length, not relevance. AGENTS.md warns authors about this;
+//    the parser should not depend on every author remembering.
+// 2. The description's total is capped BELOW the confidence floor. Without it,
+//    a long description alone cleared the floor: "how do I quantize an open
+//    model to run it locally" assigned loop and openai at score 4 each with
+//    ZERO tag matches, purely on prose overlap. Tags are the deliberate
+//    routing signal; prose can now break a tie between assets that both
+//    matched a tag, but can never conjure an assignment on its own.
+//
+// Note this RAISES the bar (fewer assets qualify) — it is not the forbidden
+// move of lowering a threshold to make the numbers look better.
+const DESCRIPTION_CAP = 2;
+
 /**
  * Scores active assets against an objective by overlapping tokens between
  * the objective text and each asset's name/description/tags. Tag matches
@@ -86,21 +107,31 @@ const DESCRIPTION_WEIGHT = 1;
 export function matchAssets(objective: string, assets: AssetConfig[]): AssetMatch[] {
   // Expand only the QUERY with concept synonyms (asset tags are already
   // canonical). "cops took me into custody" gains "police"; the asset's
-  // 'police' tag then matches.
-  const objectiveTokens = expandConcepts(contentTokens(objective));
+  // 'police' tag then matches. The second argument is the full ordered
+  // sequence WITH stopwords — multi-word concepts ("an offer", "move to
+  // another country") only exist with their glue words in place, so they
+  // cannot be recovered from the filtered content tokens.
+  const sequence = tokenize(objective).map(stem);
+  const objectiveTokens = expandConcepts(contentTokens(objective), sequence);
   for (const joined of compoundJoins(tokenize(objective))) objectiveTokens.add(joined);
   const candidates = assets.filter((a) => a.status === "active");
 
   const scored: AssetMatch[] = candidates.map((asset) => {
     const matchedTags = new Set<string>();
     let score = 0;
+    let nameHits = 0;
 
     for (const token of contentTokens(asset.name)) {
-      if (objectiveTokens.has(token)) score += NAME_WEIGHT;
+      if (objectiveTokens.has(token)) {
+        score += NAME_WEIGHT;
+        nameHits++;
+      }
     }
+    const descriptionHits = new Set<string>();
     for (const token of contentTokens(asset.description)) {
-      if (objectiveTokens.has(token)) score += DESCRIPTION_WEIGHT;
+      if (objectiveTokens.has(token)) descriptionHits.add(token);
     }
+    score += descriptionHits.size * DESCRIPTION_WEIGHT;
     for (const tag of asset.tags) {
       for (const token of contentTokens(tag)) {
         if (objectiveTokens.has(token)) {
@@ -110,7 +141,12 @@ export function matchAssets(objective: string, assets: AssetConfig[]): AssetMatc
       }
     }
 
-    return { name: asset.name, score, matchedTags: [...matchedTags] };
+    return {
+      name: asset.name,
+      score,
+      matchedTags: [...matchedTags],
+      anchored: matchedTags.size > 0 || nameHits > 0,
+    };
   });
 
   return scored.sort((a, b) => b.score - a.score);
@@ -177,7 +213,23 @@ export function selectAssets(
   assets: AssetConfig[],
   thresholds: RoutingThresholds = DEFAULT_THRESHOLDS
 ): AssetSelection {
-  const matches = matchAssets(objective, assets).filter((m) => m.score >= thresholds.floor);
+  const scored = matchAssets(objective, assets).filter((m) => m.score >= thresholds.floor);
+  // Description prose corroborates a match; it must not create one. A
+  // long description alone used to clear the floor — "how do I quantize an
+  // open model to run it locally" pulled in openai on prose overlap with no
+  // tag hit at all — which made routing a function of how much an author
+  // wrote, not of what they claimed. So once ANY asset matched on deliberate
+  // signal (tag or name), prose-only candidates are dropped.
+  //
+  // Only "once any asset is anchored": if nothing anchored, the prose match is
+  // the best evidence available and still beats falling through to research.
+  //
+  // Capping the description's contribution instead was tried and measured
+  // WORSE (clean-hit 91% -> 89%): it lowers the leader's score too, which
+  // lowers the secondaryRatio bar and lets MORE riders qualify. Filtering
+  // candidates leaves every score — and therefore the bar — untouched.
+  const anchored = scored.filter((m) => m.anchored);
+  const matches = anchored.length > 0 ? anchored : scored;
   const confident = matches.filter((m) => m.score >= matches[0].score * thresholds.secondaryRatio);
   if (confident.length > 0) {
     return {

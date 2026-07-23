@@ -140,11 +140,34 @@ const routeCases = [
   { obj: "how much house can I afford in Murrieta with my income", includes: ["homebuyer"] },
   { obj: "what is the tallest building in the world?", includes: ["research"] },
 ];
-for (const t of routeCases) {
+// The semantic layer's three mechanisms, each with the case that motivated it
+// and — more importantly — the case it must NOT break. A word map that only
+// ever adds matches is easy; these subtract or suppress, so they need a guard.
+const semanticCases = [
+  // PHRASES: meaning that only exists as a unit. The single carrying word is
+  // deliberately NOT mapped, so the phrase is the only thing that can route it.
+  { obj: "how do I beat the automated screening filters", includes: ["jobhunt"], why: "phrase → ats" },
+  { obj: "is my mammogram screening covered", excludes: ["jobhunt"], why: "bare 'screening' must NOT reach ats" },
+  { obj: "how can I legally move to another country and work there", includes: ["government"], why: "phrase → abroad/relocate" },
+  { obj: "how does similarity search find related documents", includes: ["aiforge"], why: "phrase → embedding" },
+
+  // IDIOMS: non-compositional terms that must CONSUME the misleading word.
+  { obj: "how can I read people and understand body language honestly", excludes: ["linguistics"], why: "'body language' is not about language" },
+  { obj: "which language family does Tamil belong to", includes: ["linguistics"], why: "a real language question still routes" },
+  { obj: "how do real estate agents write listings with ChatGPT", excludes: ["loop"], why: "a realtor is not an AI agent" },
+  { obj: "how do I design an agent loop that self-corrects", includes: ["loop"], why: "a real agent question still routes" },
+
+  // ANCHORING: description prose corroborates, never creates, an assignment.
+  { obj: "how do I quantize an open model to run it locally", exactly: ["aiforge"], why: "prose-only riders dropped" },
+  { obj: "what is the tallest building in the world?", includes: ["research"], why: "nothing anchored → fallback still works" },
+];
+for (const t of [...routeCases, ...semanticCases]) {
   const { assigned } = selectAssets(t.obj, registry);
   const short = t.obj.slice(0, 40);
-  if (t.exactly) check(`route "${short}…" == [${t.exactly}]`, assigned.length === t.exactly.length && t.exactly.every((a) => assigned.includes(a)), `got [${assigned}]`);
-  if (t.includes) check(`route "${short}…" includes ${t.includes}`, t.includes.every((a) => assigned.includes(a)), `got [${assigned}]`);
+  const why = t.why ? ` (${t.why})` : "";
+  if (t.exactly) check(`route "${short}…" == [${t.exactly}]${why}`, assigned.length === t.exactly.length && t.exactly.every((a) => assigned.includes(a)), `got [${assigned}]`);
+  if (t.includes) check(`route "${short}…" includes ${t.includes}${why}`, t.includes.every((a) => assigned.includes(a)), `got [${assigned}]`);
+  if (t.excludes) check(`route "${short}…" excludes ${t.excludes}${why}`, t.excludes.every((a) => !assigned.includes(a)), `got [${assigned}]`);
 }
 
 // ── 5. Overseer render logic (synthetic data — no dependency on real cases) ─
