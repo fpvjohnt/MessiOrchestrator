@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "build:all": "npm run build && npm --prefix research-mcp run build && npm --prefix homebuyer-mcp run build && npm --prefix nestegg-mcp run build && npm --prefix lawguide-mcp run build && npm --prefix jobhunt-mcp run build && npm --prefix healthguide-mcp run build && npm --prefix polymath-mcp run build && npm --prefix overseer-mcp run build && npm --prefix curiosity-mcp run build && npm --prefix education-mcp run build && npm --prefix communication-mcp run build && npm --prefix sports-mcp run build && npm --prefix government-mcp run build && npm --prefix linguistics-mcp run build && npm --prefix faiths-mcp run build && npm --prefix loop-mcp run build && npm --prefix openai-mcp run build",
+    "build:all": "npm run build && npm --prefix research-mcp run build && npm --prefix homebuyer-mcp run build && npm --prefix nestegg-mcp run build && npm --prefix lawguide-mcp run build && npm --prefix jobhunt-mcp run build && npm --prefix healthguide-mcp run build && npm --prefix polymath-mcp run build && npm --prefix overseer-mcp run build && npm --prefix curiosity-mcp run build && npm --prefix education-mcp run build && npm --prefix communication-mcp run build && npm --prefix sports-mcp run build && npm --prefix government-mcp run build && npm --prefix linguistics-mcp run build && npm --prefix faiths-mcp run build && npm --prefix loop-mcp run build && npm --prefix openai-mcp run build && npm --prefix aiforge-mcp run build && npm --prefix gitforge-mcp run build && npm --prefix promptcraft-mcp run build && npm --prefix apiforge-mcp run build",
     "build:overseer": "npm --prefix overseer-mcp run build",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
@@ -17,12 +17,16 @@
     "golden": "node golden.mjs",
     "paraphrase": "node paraphrase.mjs",
     "setup": "node bootstrap.mjs",
+    "bridge": "node bridge/server.mjs",
     "health": "node health-smoke.mjs",
+    "archive": "node archive-cases.mjs",
+    "backup": "node backup-data.mjs",
     "verify": "npm run build:all && npm test",
     "check": "npm run verify && npm run golden && npm run paraphrase"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^5.2.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
