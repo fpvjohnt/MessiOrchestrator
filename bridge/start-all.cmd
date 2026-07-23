@@ -34,6 +34,15 @@ for %%A in (%*) do (
   )
 )
 
+REM --- log rotation --------------------------------------------------------
+REM The %TEMP%\mcp-*.log files are append-only and nothing rotated them —
+REM mcp-startup.log had grown to 1.2 MB / 17k lines. Roll any that pass 5 MB to
+REM a single .1 backup (overwriting the previous .1). No pipes: %%~zS reads the
+REM size from a for-variable, so this stays clear of the findstr/EOF hang.
+for %%L in (mcp-startup mcp-bridge mcp-cloudflared) do (
+  if exist "%TEMP%\%%L.log" for %%S in ("%TEMP%\%%L.log") do if %%~zS GTR 5000000 move /y "%TEMP%\%%L.log" "%TEMP%\%%L.log.1" >nul
+)
+
 REM --- bridge ---------------------------------------------------------------
 REM Full paths for netstat/findstr/tasklist: if this ever runs with a shell that
 REM puts Git Bash (or similar) ahead of System32 on PATH, the unix tools of the

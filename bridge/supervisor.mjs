@@ -304,9 +304,14 @@ async function killImage(image) {
 // How long to give start-all.cmd to finish. It only has to spawn two detached
 // processes, so seconds is generous; anything longer means it is wedged.
 const RELAUNCH_TIMEOUT_MS = 30_000;
-// How long to wait after a relaunch before checking whether it actually worked.
-// The bridge binds its port in well under this.
-const RELAUNCH_VERIFY_MS = 10_000;
+// After a relaunch, POLL for recovery rather than checking once. A single probe
+// at +10s produced false "restart is not working" CRITICALs: the bridge came
+// back ~19s after the page fired (measured 2026-07-23) — just past the window —
+// so the recovery mechanism was slandered as broken on every real restart, and
+// that alarm-fatigue trains the ntfy channel (the only off-box alert) to be
+// ignored. Poll every 2s up to 30s and succeed on the first healthy answer.
+const RELAUNCH_VERIFY_TIMEOUT_MS = 30_000;
+const RELAUNCH_VERIFY_POLL_MS = 2_000;
 
 /**
  * Runs start-all.cmd and WAITS for it, rather than firing and forgetting.
@@ -364,15 +369,17 @@ async function relaunchAndVerify(component, args, probe) {
     log(`RESTART-INEFFECTIVE ${component}: ${launch.reason}`);
     return { ok: false, reason: launch.reason };
   }
-  await new Promise((r) => setTimeout(r, RELAUNCH_VERIFY_MS));
-  const probed = await probe();
-  const ok = probed?.ok === true;
-  log(
-    ok
-      ? `${component}: relaunch verified (responding after restart)`
-      : `RESTART-INEFFECTIVE ${component}: still not responding ${RELAUNCH_VERIFY_MS}ms after a clean relaunch`
-  );
-  return ok ? { ok: true } : { ok: false, reason: "still not responding after a clean relaunch" };
+  const deadline = Date.now() + RELAUNCH_VERIFY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, RELAUNCH_VERIFY_POLL_MS));
+    const probed = await probe();
+    if (probed?.ok === true) {
+      log(`${component}: relaunch verified (responding after restart)`);
+      return { ok: true };
+    }
+  }
+  log(`RESTART-INEFFECTIVE ${component}: still not responding ${RELAUNCH_VERIFY_TIMEOUT_MS}ms after a clean relaunch`);
+  return { ok: false, reason: "still not responding after a clean relaunch" };
 }
 
 async function restartBridge() {

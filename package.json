@@ -20,6 +20,7 @@
     "setup": "node bootstrap.mjs",
     "bridge": "node bridge/server.mjs",
     "health": "node health-smoke.mjs",
+    "status": "node status.mjs",
     "archive": "node archive-cases.mjs",
     "backup": "node backup-data.mjs",
     "verify": "npm run build:all && npm test",
