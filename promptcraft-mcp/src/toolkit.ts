@@ -137,7 +137,7 @@ const MYTHS: Array<{ myth: string; reality: string }> = [
 export function mythVsReality(): string {
   return [
     `PROMPT ENGINEERING MYTHS vs REALITY`,
-    `BOTTOM LINE: prompting is empirical, not incantation. The folklore below wastes time; the reality is 'be specific, choose context well, and measure'.`,
+    `BOTTOM LINE: prompting is empirical, not incantation. The folklore in this list wastes time; the reality is 'be specific, choose context well, and measure'.`,
     ``,
     ...MYTHS.flatMap(({ myth, reality }, i) => [`${i + 1}. MYTH: "${myth}"`, `   REALITY: ${reality}`, ``]),
     `The through-line: clarity + right context + iteration on a golden set beats clever wording — and a prompt is never a substitute for a real guardrail.`,

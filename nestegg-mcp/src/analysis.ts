@@ -48,7 +48,7 @@ export function analyzeAsset(symbol: string, type: AssetType): string {
   return [
     `ANALYSIS PLAN — ${sym} (${type})`,
     ``,
-    `BOTTOM LINE: gather the signals below via research, then feed them to 'score_signals' for a rated read. This is analysis, not a buy/sell order.`,
+    `BOTTOM LINE: gather the signals this tool lists via research, then feed them to 'score_signals' for a rated read. This is analysis, not a buy/sell order.`,
     ``,
     sources,
     ``,

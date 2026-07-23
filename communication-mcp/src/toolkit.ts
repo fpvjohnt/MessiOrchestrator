@@ -98,6 +98,7 @@ export function spotFallacies(rawFallacy?: string): string {
   if (!rawFallacy) {
     return [
       `SPOT THE FAULTY ARGUMENT — the common tricks, how to catch them, how to counter:`,
+      `BOTTOM LINE: naming the trick out loud is most of the counter — a faulty argument only works while nobody says what it's doing.`,
       ``,
       ...entries.map(([, f]) => `▸ ${f.label}: ${f.spot}`),
       ``,
@@ -108,7 +109,12 @@ export function spotFallacies(rawFallacy?: string): string {
   const hit = entries.find(([k, f]) => k.includes(norm) || norm.includes(k) || f.label.toLowerCase().includes(clean(rawFallacy).toLowerCase()));
   if (!hit) return `Known tricks: ${entries.map(([, f]) => f.label).join(", ")}.`;
   const f = hit[1];
-  return [`${f.label.toUpperCase()}`, `Spot it: ${f.spot}`, `Counter it: ${f.counter}`].join("\n");
+  return [
+    `${f.label.toUpperCase()}`,
+    `BOTTOM LINE: ${f.counter}`,
+    ``,
+    `Spot it: ${f.spot}`,
+  ].join("\n");
 }
 
 // ── myth_vs_reality: the honest truth about reading people ──────────────────
@@ -122,6 +128,7 @@ export function mythVsReality(): string {
   ];
   return [
     `READING-PEOPLE MYTHS vs REALITY — the honest version (this is where pop psychology lies to you)`,
+    `BOTTOM LINE: nobody reliably detects lies from body language — not you, not trained investigators. Every confident "tell" in the popular list has been tested and failed. What works is baselines and better questions, not gestures.`,
     ``,
     ...myths.map(([m, r]) => `▸ MYTH: ${m}\n   REALITY: ${r}`),
     ``,

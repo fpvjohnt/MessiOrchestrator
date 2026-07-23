@@ -36,7 +36,7 @@ export function checkOpenai(rawTopic: string): string {
   const year = new Date().getFullYear();
   return [
     `OPENAI CHECK — "${topic}"`,
-    `BOTTOM LINE: do NOT answer this from memory. Model IDs, parameter names, pricing, rate limits, and deprecations on this platform change on a scale of weeks — and being confidently wrong about an API shape costs real debugging hours. Have research check the sources below, then call openai_verdict with what it finds.`,
+    `BOTTOM LINE: do NOT answer this from memory. Model IDs, parameter names, pricing, rate limits, and deprecations on this platform change on a scale of weeks — and being confidently wrong about an API shape costs real debugging hours. Have research check the sources this tool lists, then call openai_verdict with what it finds.`,
     ``,
     `CHECK THESE SOURCES (in this order — the official docs outrank everything else):`,
     ...SOURCES.map((s) => `  - ${s}`),

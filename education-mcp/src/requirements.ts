@@ -37,6 +37,7 @@ export function requirements(level?: string): string {
   if (!level) {
     return [
       `EDUCATION REQUIREMENTS — the stable structure (specifics vary by place, so verify yours):`,
+      `BOTTOM LINE: the shape of each level is stable and worth learning; the numbers attached to it are not — never act on a credit count or cutoff from memory, verify it for your state and year.`,
       ``,
       ...keys.map((k) => `▸ ${LEVELS[k].label} (ask: requirements "${k}")`),
       ``,
@@ -49,6 +50,8 @@ export function requirements(level?: string): string {
   const l = LEVELS[key];
   return [
     `${l.label.toUpperCase()}`,
+    `BOTTOM LINE: this is the general shape of ${l.label.toLowerCase()} — treat every specific number in this answer as "check it for your state and year" before you plan around it.`,
+    ``,
     ...l.body.map((b) => `  • ${b}`),
     ``,
     `VERIFY YOUR SPECIFICS (rules differ by place and change) — have research run:`,

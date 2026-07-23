@@ -35,7 +35,9 @@ Build output goes to `dist/`. Register in `data/registry.json` with `command: "n
 
 ## Conventions
 
-- **BOTTOM LINE first.** Every tool's output opens with a one-line headline — the orchestrator's synthesis extracts it.
+- **BOTTOM LINE first.** Every tool's output opens with a one-line headline — the orchestrator's synthesis extracts every line matching `/^BOTTOM LINE/` and builds the cross-asset digest from them. Two consequences, both now enforced by `regression.mjs`:
+  - **A tool with no BOTTOM LINE is invisible to the orchestrator.** Not untidy — invisible. Synthesis prints "(no headline extracted)" and the specialist drops out of the merged answer entirely. This was true of 13 of 71 tools before it was measured, including four `myth_vs_reality` tools whose entire job is to state the conclusion.
+  - **The headline is read OUTSIDE its own output**, next to other assets' headlines. "Verify it against the sources below" points at nothing there. Write a headline that stands alone; 19 of them didn't.
 - **Deterministic and offline.** Assets do no network I/O and hold no API keys. Anything live routes through the `research` asset.
 - **Reverse index.** Every domain map ships a `resolveX(input)` that matches key → label → `keys` → loose contains-match (longest key wins). It **must return `undefined`** for unknown input, never `null` — `regression.mjs` asserts this.
 - **Honesty tools.** Assets carry a `myth_vs_reality` and, where facts move, a two-step verify loop. Never bake a price, model ID, limit, or date into a map — that's what the verify loop is for.

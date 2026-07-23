@@ -131,6 +131,7 @@ export const travelEntry = (region?: string) => regionField(region, "travel", "T
 export function howGovernmentsDiffer(): string {
   return [
     `HOW GOVERNMENTS DIFFER — the main systems, in plain words`,
+    `BOTTOM LINE: the label on a government tells you less than who actually holds power and whether they can be removed by a vote — several of these systems share a name and almost nothing else.`,
     ``,
     `▸ Republic — leaders elected, power limited by a constitution/laws (US, France, Brazil).`,
     `▸ Parliamentary democracy — voters elect a parliament, which picks a Prime Minister (UK, Japan, Germany).`,

@@ -274,7 +274,7 @@ const MYTHS: Array<{ myth: string; reality: string }> = [
 export function mythVsReality(): string {
   return [
     `AI-API & POSTMAN MYTHS vs REALITY`,
-    `BOTTOM LINE: most API bugs are auth, the request body, or a wrong assumption about the response. The reality below is 'read the status + body, protect the key, and test properties not text'.`,
+    `BOTTOM LINE: most API bugs are auth, the request body, or a wrong assumption about the response. The reality in each case is 'read the status + body, protect the key, and test properties not text'.`,
     ``,
     ...MYTHS.flatMap(({ myth, reality }, i) => [`${i + 1}. MYTH: "${myth}"`, `   REALITY: ${reality}`, ``]),
     `The through-line: a 200 isn't success, the key never goes in the URL, retries need idempotency, and AI endpoints are tested by properties — never exact text.`,

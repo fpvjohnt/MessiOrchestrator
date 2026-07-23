@@ -427,8 +427,29 @@ const TOOL_SMOKE = [
   ["apiforge.debug (401)", apDebug("getting a 401 unauthorized")],
   ["apiforge.myth_vs_reality", apMyth()],
 ];
+// "Renders something long" was the only bar here, and length is not quality.
+// The one output convention with a real consequence is the BOTTOM LINE
+// headline: synthesis.ts extracts every line matching /^BOTTOM LINE/ and builds
+// the cross-asset digest from them. A tool without one is not merely untidy —
+// its entire conclusion is INVISIBLE to the orchestrator, which prints
+// "(no headline extracted — returned data without a BOTTOM LINE)" and drops the
+// specialist from the merged answer. When this check was first written it
+// failed on 13 of 71 tools (18%), including four myth_vs_reality tools whose
+// whole job is to state the honest conclusion.
+//
+// The regex matches synthesis.ts's exactly. If that extractor ever changes,
+// this must change with it or the gate silently stops testing the real thing.
 for (const [label, out] of TOOL_SMOKE) {
   check(`tool renders: ${label}`, typeof out === "string" && out.length > 60, `len ${out?.length ?? "n/a"}`);
+  const headlines = (out ?? "").split("\n").filter((l) => /^\s*BOTTOM LINE/i.test(l));
+  check(`synthesis can extract a headline: ${label}`, headlines.length > 0, `no BOTTOM LINE in ${(out ?? "").length} chars — this asset's conclusion would vanish from the merged answer`);
+  // A headline is READ OUTSIDE ITS OUTPUT — synthesis lifts it into a digest
+  // beside other assets' headlines, where "the sources below" points at
+  // nothing. 19 of them said exactly that before this check existed. Only
+  // "below" is flagged: "ranking one dialect above another" is ordinary
+  // English, and a headline that genuinely needs the word can be reworded.
+  const dangling = headlines.find((l) => /\bbelow\b/i.test(l));
+  check(`headline stands alone (no dangling reference): ${label}`, dangling === undefined, `refers to "below" but is read out of context: ${(dangling ?? "").trim().slice(0, 100)}`);
 }
 // A few content assertions — the honesty/neutrality guarantees these tools promise.
 check("government keeps its not-legal-advice disclaimer", immigrationPaths("japan").toLowerCase().includes("not legal advice"));

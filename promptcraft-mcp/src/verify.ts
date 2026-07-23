@@ -25,7 +25,7 @@ export function checkPractice(rawTopic: string): string {
   const year = new Date().getFullYear();
   return [
     `PRACTICE CHECK — "${topic}"`,
-    `BOTTOM LINE: prompt TECHNIQUE is fairly stable, but MODEL-SPECIFIC guidance (especially reasoning models) changes each generation — verify this against the sources below, then call practice_verdict.`,
+    `BOTTOM LINE: prompt TECHNIQUE is fairly stable, but MODEL-SPECIFIC guidance (especially reasoning models) changes each generation — verify this against the sources this tool lists, then call practice_verdict.`,
     ``,
     `CHECK THESE SOURCES:`,
     ...SOURCES.map((s) => `  - ${s}`),

@@ -215,14 +215,21 @@ const UNIVERSAL_STUDY = [
   "Sleep is study — memory consolidates overnight; an all-nighter trades tomorrow's recall for tonight's cramming.",
 ];
 
+// One honest headline for every path through this tool: the method beats the
+// subject. Stated once so the three returns below cannot drift apart.
+const STUDY_HEADLINE =
+  `BOTTOM LINE: retrieve, don't re-read. Testing yourself and spacing the reviews beats every other study habit — including the one that feels most productive, highlighting.`;
+
 export function studySkills(subject?: string): string {
   const universal = [`HOW TO ACTUALLY LEARN (works for every subject):`, ...UNIVERSAL_STUDY.map((u) => `  • ${u}`)];
-  if (!subject) return universal.join("\n");
+  if (!subject) return [STUDY_HEADLINE, ``, ...universal].join("\n");
   const key = resolveSubject(subject);
-  if (!key) return [...universal, ``, `(No subject matched "${clean(subject)}" for subject-specific tips — the universal ones above still apply.)`].join("\n");
+  if (!key) return [STUDY_HEADLINE, ``, ...universal, ``, `(No subject matched "${clean(subject)}" for subject-specific tips — the universal ones above still apply.)`].join("\n");
   const s = SUBJECTS[key];
   return [
     `STUDYING ${s.label.toUpperCase()}`,
+    STUDY_HEADLINE,
+    ``,
     ...s.how_to_study.map((h) => `  • ${h}`),
     ``,
     ...universal,

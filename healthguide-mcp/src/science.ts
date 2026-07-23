@@ -20,7 +20,7 @@ export function checkTheScience(rawClaim: string): string {
   const claim = clean(rawClaim);
   return [
     `EVIDENCE CHECK — "${claim}"`,
-    `BOTTOM LINE: don't answer this from memory. Have research check it against real bodies below, then call science_verdict with what it finds.`,
+    `BOTTOM LINE: don't answer this from memory. Have research check it against the real scientific bodies this tool names, then call science_verdict with what it finds.`,
     ``,
     `CHECK THESE SOURCES (multi-country, so no single country's bias or gap drives the answer):`,
     ...SOURCES.map((s) => `  - ${s}`),

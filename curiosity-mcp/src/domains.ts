@@ -197,7 +197,12 @@ export function mythVsReality(topic?: string): string {
   const chosen = topic ? entries.filter(([k]) => k === resolveDomain(topic)) : entries;
   if (chosen.length === 0) return `No field matched "${clean(topic ?? "")}". Try a keyword like "aliens", "quantum", or "Tesla".`;
   const blocks = chosen.map(([, d]) => [`▸ ${d.label}`, `   MYTH: ${d.myth.claim}`, `   REALITY: ${d.myth.reality}`].join("\n"));
-  return [`MYTH vs REALITY${topic ? ` — ${DOMAINS[resolveDomain(topic)!].label}` : " (one per field)"}`, ``, ...blocks].join("\n");
+  return [
+    `MYTH vs REALITY${topic ? ` — ${DOMAINS[resolveDomain(topic)!].label}` : " (one per field)"}`,
+    `BOTTOM LINE: the popular version of these is wrong in a specific, checkable way — the reality is usually less dramatic and more interesting.`,
+    ``,
+    ...blocks,
+  ].join("\n");
 }
 
 export function goDeeper(rawTopic: string): string {
@@ -207,6 +212,8 @@ export function goDeeper(rawTopic: string): string {
   const d = DOMAINS[key];
   return [
     `GO DEEPER — ${d.label}`,
+    `BOTTOM LINE: these are the open questions in ${d.label.toLowerCase()} worth your time — and because they're live research, check the current state before you trust any answer.`,
+    ``,
     `Next rabbit holes to explore: ${d.deeper.map((x) => `\n  • ${x}`).join("")}`,
     ``,
     `To learn the CURRENT state of any of these (this stuff moves), have research run queries like:`,
@@ -227,6 +234,7 @@ const HOW_WE_KNOW = [
 export function howWeKnow(): string {
   return [
     `HOW WE ACTUALLY KNOW — the tools that turn 'I heard' into 'we measured'`,
+    `BOTTOM LINE: every one of these works by cross-checking independent methods against each other — that agreement, not any single measurement, is what makes it knowledge.`,
     ``,
     ...HOW_WE_KNOW.map(([q, a]) => `▸ ${q}\n   ${a}`),
     ``,

@@ -3,6 +3,7 @@
 export function howLanguageWorks(): string {
   return [
     `HOW LANGUAGE WORKS — the machinery under every human language`,
+    `BOTTOM LINE: every human language solves the same five problems — sounds, word-building, order, meaning, and writing — with different choices. None of the choices is more advanced than another.`,
     ``,
     `▸ SOUNDS (phonetics/phonology): every language picks a small set of sounds from the huge range humans can make. Which ones, and which differences 'count', is why an accent is hard — your ear was trained on your first language's set.`,
     `▸ WORDS (morphology): words are built from pieces (morphemes) — 'un-break-able'. Some languages pack a whole sentence into one long word; others keep pieces separate.`,
@@ -41,6 +42,7 @@ export function linguisticsMyths(): string {
   ];
   return [
     `LANGUAGE MYTHS vs REALITY`,
+    `BOTTOM LINE: nearly every popular claim ranking one language or dialect above another is a social judgment wearing a scientific costume. No human language is primitive, and adults can absolutely learn one.`,
     ``,
     ...myths.map(([m, r]) => `▸ MYTH: ${m}\n   REALITY: ${r}`),
     ``,

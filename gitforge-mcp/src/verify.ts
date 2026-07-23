@@ -26,7 +26,7 @@ export function checkPractice(rawTopic: string): string {
   const year = new Date().getFullYear();
   return [
     `PRACTICE CHECK — "${topic}"`,
-    `BOTTOM LINE: Git core behavior is stable and can be answered directly, but the GitHub product surface (Actions, gh CLI, features, defaults) moves — verify this against the sources below, then call practice_verdict.`,
+    `BOTTOM LINE: Git core behavior is stable and can be answered directly, but the GitHub product surface (Actions, gh CLI, features, defaults) moves — verify this against the sources this tool lists, then call practice_verdict.`,
     ``,
     `CHECK THESE SOURCES:`,
     ...SOURCES.map((s) => `  - ${s}`),

@@ -28,7 +28,7 @@ export function checkPractice(rawTopic: string): string {
   const topic = clean(rawTopic);
   return [
     `PRACTICE CHECK — "${topic}"`,
-    `BOTTOM LINE: don't answer this from memory — agentic-AI tooling and best practices change monthly. Have research check it against the sources below, then call practice_verdict with what it finds.`,
+    `BOTTOM LINE: don't answer this from memory — agentic-AI tooling and best practices change monthly. Have research check it against the sources this tool lists, then call practice_verdict with what it finds.`,
     ``,
     `CHECK THESE SOURCES:`,
     ...SOURCES.map((s) => `  - ${s}`),

@@ -92,7 +92,7 @@ export function expertVerdict(rawQuestion: string, rawFindings: string, ctx: Wor
 
   return [
     `EXPERT VERDICT — ${question}`,
-    `BOTTOM LINE: fold the verified findings into the ${c ? c.label : "expert"} method below, take the first step TODAY, and come back with what happened — that's how the back-and-forth converges on solved.`,
+    `BOTTOM LINE: fold the verified findings into the ${c ? c.label : "expert"} method this tool lays out, take the first step TODAY, and come back with what happened — that's how the back-and-forth converges on solved.`,
     ``,
     `What research verified: ${findings || "(nothing passed — hand this what research found)"}`,
     ...(ctxBlock.length ? [``, `Applied to your situation:`, ...ctxBlock.map((l) => `  ${l}`)] : []),

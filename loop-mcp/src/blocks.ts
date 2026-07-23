@@ -115,6 +115,7 @@ export function buildingBlocks(block?: string): string {
   if (!block) {
     return [
       `THE SIX BUILDING BLOCKS OF AN AUTONOMOUS LOOP — the shift from manual prompting to a self-running feedback cycle. Use this as a READINESS CHECKLIST: which do you already have?`,
+      `BOTTOM LINE: an MCP collection gives you exactly one of the six blocks. A loop is autonomous only when the other five are in place too — until then you are the heartbeat, the memory, and the reviewer.`,
       ``,
       ...Object.values(BUILDING_BLOCKS).map((b) => `▸ ${b.label}: ${b.what}`),
       ``,

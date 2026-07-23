@@ -278,7 +278,7 @@ const MYTHS: Array<{ myth: string; reality: string }> = [
 export function mythVsReality(): string {
   return [
     `AI/ML BUILD MYTHS vs REALITY`,
-    `BOTTOM LINE: knowing this craft means knowing its edges. The folklore below wastes the most time and money — the reality is almost always "simpler, measured, and about the plumbing, not the model".`,
+    `BOTTOM LINE: knowing this craft means knowing its edges. The folklore in this list wastes the most time and money — the reality is almost always "simpler, measured, and about the plumbing, not the model".`,
     ``,
     ...MYTHS.flatMap(({ myth, reality }, i) => [`${i + 1}. MYTH: "${myth}"`, `   REALITY: ${reality}`, ``]),
     `The through-line: the model is one fallible component. The engineering — retrieval, validation, evals, guardrails, the simplest approach that works — is where the quality actually comes from.`,

@@ -77,7 +77,7 @@ export function propertyInvestigation(address: string, county?: string, city?: s
   const head = [
     `PROPERTY INVESTIGATION — ${address}`,
     ``,
-    `BOTTOM LINE: verify the listing against COUNTY records below. If a number differs from the listing, that gap is your leverage. Listing sites can be wrong or blocked — the county is the truth.`,
+    `BOTTOM LINE: verify the listing against the COUNTY records this tool points you to. If a number differs from the listing, that gap is your leverage. Listing sites can be wrong or blocked — the county is the truth.`,
     ``,
   ];
 

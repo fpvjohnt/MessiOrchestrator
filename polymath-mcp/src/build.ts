@@ -113,7 +113,7 @@ export function finalizeBuild(rawIdea: string, findings: string): string {
   const notes = clean(findings);
   return [
     `BUILD PLAN, FINALIZED — ${idea}`,
-    `BOTTOM LINE: use the verified findings below to lock the stack, then start with the smallest end-to-end slice, not the whole system.`,
+    `BOTTOM LINE: use the verified findings from research to lock the stack, then start with the smallest end-to-end slice, not the whole system.`,
     ``,
     `Verified findings: ${notes || "(none provided — pass what research found)"}`,
     ``,

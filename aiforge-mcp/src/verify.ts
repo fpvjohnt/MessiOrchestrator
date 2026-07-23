@@ -29,7 +29,7 @@ export function checkPractice(rawTopic: string): string {
   const year = new Date().getFullYear();
   return [
     `PRACTICE CHECK — "${topic}"`,
-    `BOTTOM LINE: don't answer this from memory — the AI/ML tooling stack (Hugging Face, LangChain, PyTorch, serving) changes monthly. Have research check it against the sources below, then call practice_verdict with what it finds.`,
+    `BOTTOM LINE: don't answer this from memory — the AI/ML tooling stack (Hugging Face, LangChain, PyTorch, serving) changes monthly. Have research check it against the sources this tool lists, then call practice_verdict with what it finds.`,
     ``,
     `CHECK THESE SOURCES:`,
     ...SOURCES.map((s) => `  - ${s}`),

@@ -120,6 +120,7 @@ export function explainFaith(input?: string): string {
 export function compareFaiths(): string {
   return [
     `HOW THE MAJOR FAITHS RELATE — the shared roots and the real differences`,
+    `BOTTOM LINE: the major faiths cluster into a few families that share real history and vocabulary — the differences that matter are specific and doctrinal, not a vague clash of civilizations.`,
     ``,
     `THE ABRAHAMIC FAMILY (one God, shared roots): Judaism → Christianity → Islam all trace to Abraham and worship one God. Judaism is the oldest; Christianity grew from it (adding Jesus as divine); Islam sees itself as the final revelation in the same line. They share many figures (Abraham, Moses, Jesus is honored in Islam as a prophet) but differ on Jesus' nature and which scripture is final.`,
     ``,

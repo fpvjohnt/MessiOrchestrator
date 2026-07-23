@@ -417,7 +417,7 @@ const MYTHS: Myth[] = [
 export function mythVsReality(): string {
   return [
     `OPENAI PLATFORM MYTHS vs REALITY`,
-    `BOTTOM LINE: most of what burns people on this platform isn't the model — it's folklore repeated by people selling courses. The through-line below: the engineering is in the loop, the spec, and the eval. Almost never in the model.`,
+    `BOTTOM LINE: most of what burns people on this platform isn't the model — it's folklore repeated by people selling courses. The through-line: the engineering is in the loop, the spec, and the eval. Almost never in the model.`,
     ``,
     ...MYTHS.flatMap((m) => [`  MYTH: ${m.myth}`, `  REALITY: ${m.reality}`, ``]),
     `The honest meta-point: this list is stable engineering judgment, not version trivia — which is exactly why it's safe to keep in memory. Anything with a number in it (a price, a limit, a model ID, a deprecation date) is NOT in this asset's memory on purpose, because that's the stuff that quietly goes wrong. Route those through check_openai → openai_verdict.`,

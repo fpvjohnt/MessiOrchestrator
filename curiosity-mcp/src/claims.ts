@@ -28,7 +28,7 @@ export function checkClaim(rawClaim: string): string {
   const claim = clean(rawClaim);
   return [
     `CLAIM CHECK — "${claim}"`,
-    `BOTTOM LINE: don't answer this from memory. Have research check it against the real bodies below, then call claim_verdict with what it finds.`,
+    `BOTTOM LINE: don't answer this from memory. Have research check it against the real scientific bodies this tool names, then call claim_verdict with what it finds.`,
     ``,
     `CHECK THESE SOURCES:`,
     ...SOURCES.map((s) => `  - ${s}`),

@@ -26,7 +26,7 @@ export function checkPractice(rawTopic: string): string {
   const year = new Date().getFullYear();
   return [
     `PRACTICE CHECK — "${topic}"`,
-    `BOTTOM LINE: HTTP fundamentals are stable, but Postman features and provider AI-API specs (endpoints, params, limits, pricing) change fast — verify this against the sources below, then call practice_verdict.`,
+    `BOTTOM LINE: HTTP fundamentals are stable, but Postman features and provider AI-API specs (endpoints, params, limits, pricing) change fast — verify this against the sources this tool lists, then call practice_verdict.`,
     ``,
     `CHECK THESE SOURCES:`,
     ...SOURCES.map((s) => `  - ${s}`),

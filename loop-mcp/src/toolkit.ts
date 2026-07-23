@@ -195,6 +195,7 @@ export function mythVsReality(): string {
   ];
   return [
     `AGENTIC LOOP MYTHS vs REALITY — the folklore that burns people (and the honest version)`,
+    `BOTTOM LINE: nearly every one of these blames the model for what is a loop-engineering bug. More agents, more reflection, and a bigger model are the three most expensive ways to avoid fixing the loop.`,
     ``,
     ...myths.map(([m, r]) => `▸ MYTH: ${m}\n   REALITY: ${r}`),
     ``,
