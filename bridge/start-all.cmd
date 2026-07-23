@@ -75,5 +75,11 @@ if defined TUNNEL_RUNNING (
   REM "cloudflared.exe is running" from "the phone can actually reach us".
   REM Left unset, cloudflared picks its own port from a range it is free to
   REM change between releases, and the probe becomes a guess.
-  start "" /b "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel run --metrics 127.0.0.1:20241 mcp >> "%TEMP%\mcp-cloudflared.log" 2>&1
+  REM --metrics goes BEFORE `run`: it is a tunnel-level flag, not a run
+  REM subcommand flag. A cloudflared auto-update (2026-07-23) moved it there;
+  REM the old `run --metrics` order now dies instantly with "flag provided but
+  REM not defined: -metrics", which after a reboot left the phone dark while the
+  REM supervisor restart-looped forever. --no-autoupdate freezes the binary so a
+  REM future silent CLI change can't break the reboot the same way again.
+  start "" /b "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --metrics 127.0.0.1:20241 --no-autoupdate run mcp >> "%TEMP%\mcp-cloudflared.log" 2>&1
 )
