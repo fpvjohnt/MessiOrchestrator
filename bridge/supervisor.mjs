@@ -19,7 +19,7 @@
 // All decision logic lives in supervisor-logic.mjs so it can be tested without
 // spawning anything. Everything in here is I/O.
 import { spawn, execFile } from "node:child_process";
-import { appendFile, mkdir, readFile, stat, rename } from "node:fs/promises";
+import { appendFile, mkdir, stat, rename } from "node:fs/promises";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hostname } from "node:os";
@@ -30,6 +30,7 @@ import {
   formatAlertLine,
   formatAlertText,
 } from "./supervisor-logic.mjs";
+import { loadEnvFile } from "./load-env.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -40,25 +41,11 @@ const MAX_LOG_BYTES = 5 * 1024 * 1024;
 
 // ── config ────────────────────────────────────────────────────────────────
 // .env is read here rather than inherited, because this process is started by
-// supervise.vbs at logon with a bare environment — nothing has sourced .env for
-// it. Deliberately does NOT overwrite an existing process.env value, so a var
-// set for a one-off run still wins.
-async function loadEnv() {
-  let text;
-  try {
-    text = await readFile(join(ROOT, ".env"), "utf-8");
-  } catch {
-    return; // no .env is fine; every setting below has a default
-  }
-  for (const line of text.split(/\r?\n/)) {
-    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
-    if (!m) continue; // comments and blanks
-    const [, key, raw] = m;
-    if (process.env[key] !== undefined) continue;
-    process.env[key] = raw.trim().replace(/^["'](.*)["']$/, "$1");
-  }
-}
-await loadEnv();
+// supervise.vbs at logon with a bare environment. Shared with the bridge so
+// both agree on what a setting means — they disagreeing about MCP_BRIDGE_PORT
+// is precisely how a healthy bridge gets probed on the wrong port and
+// restarted forever. See load-env.mjs.
+await loadEnvFile(ROOT);
 
 const num = (name, fallback) => Number(process.env[name] ?? fallback);
 

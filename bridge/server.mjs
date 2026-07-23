@@ -19,8 +19,17 @@ import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { ipKeyGenerator } from "express-rate-limit";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import { createProvider } from "./oauth-provider.mjs";
+import { loadEnvFile } from "./load-env.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+// MUST run before any config is read below. This process is started from
+// start-all.cmd at logon with a bare environment, so without it every setting
+// here except the token falls back to its default no matter what .env says —
+// see load-env.mjs. Values already in the environment win, so a one-off
+// override on the command line still beats the file.
+await loadEnvFile(ROOT);
+
 const PORT = Number(process.env.MCP_BRIDGE_PORT ?? 8787);
 const HOST = "127.0.0.1";
 

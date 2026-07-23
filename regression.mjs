@@ -21,6 +21,9 @@ import { withFileLock, acquireCrossProcessLock } from "./dist/file-lock.js";
 // Case-archiving selection. Pure by construction — archive-cases.mjs itself
 // runs on import, so the logic has to live apart from it to be testable at all.
 import { isArchivable, partitionCases, mergeArchive, analyzeStore, suggestCutoffs } from "./archive-logic.mjs";
+// The one .env parser the bridge and supervisor share. They disagreeing about a
+// setting is what made MCP_BRIDGE_PORT a false-outage generator.
+import { parseEnv, applyEnv } from "./bridge/load-env.mjs";
 import { CLUSTERS, resolveCluster } from "./polymath-mcp/dist/clusters.js";
 import { buildIt } from "./polymath-mcp/dist/build.js";
 import { askTheExpert } from "./polymath-mcp/dist/consult.js";
@@ -741,6 +744,70 @@ for (const [name, out] of START_HERE) {
       offenders.length === 0,
       offenders.map(([n, l]) => `line ${n}: ${l.trim().slice(0, 60)}`).join(" | ")
     );
+  }
+}
+
+// ── 19c-bis. .env parsing ──────────────────────────────────────────────────
+// The bridge and the supervisor both load the root .env, and they MUST agree:
+// the supervisor read it while the bridge did not, so setting MCP_BRIDGE_PORT
+// moved the probe and not the listener — a permanent false outage, with
+// restarts, against a healthy bridge. One parser now, with the quoting and
+// precedence rules pinned here.
+{
+  const parsed = parseEnv(
+    [
+      "# a comment",
+      "",
+      "PLAIN=value",
+      "  SPACED  =  padded  ",
+      'QUOTED="in quotes"',
+      "SINGLE='in singles'",
+      "EMPTY=",
+      "URL=https://ntfy.sh/topic-name",
+      "EQUALS=abc==",             // base64 padding
+      "INNER=a=b=c",
+      "not a setting line",
+      "9INVALID=nope",            // must start with a letter or underscore
+      "DUPE=first",
+      "DUPE=second",
+    ].join("\r\n") // CRLF, because .env sits next to CRLF-pinned batch files
+  );
+
+  check("parses a plain assignment", parsed.PLAIN === "value", parsed.PLAIN);
+  check("trims whitespace around key and value", parsed.SPACED === "padded", `"${parsed.SPACED}"`);
+  check("strips surrounding double quotes", parsed.QUOTED === "in quotes", parsed.QUOTED);
+  check("strips surrounding single quotes", parsed.SINGLE === "in singles", parsed.SINGLE);
+  check("keeps an empty value", parsed.EMPTY === "", JSON.stringify(parsed.EMPTY));
+  check("does not mangle a URL", parsed.URL === "https://ntfy.sh/topic-name", parsed.URL);
+  // MCP_BRIDGE_TOKEN is base64 of 32 random bytes; base64 pads with "=".
+  // Splitting on every "=" would silently truncate the one secret that guards
+  // the public hostname, and the bridge would start with a shorter passphrase.
+  check("keeps base64 '=' padding intact", parsed.EQUALS === "abc==", parsed.EQUALS);
+  check("only the first '=' separates key from value", parsed.INNER === "a=b=c", parsed.INNER);
+  check("ignores lines that are not assignments", parsed["not a setting line"] === undefined);
+  check("ignores comments", Object.keys(parsed).every((k) => !k.startsWith("#")));
+  check("rejects a key starting with a digit", parsed["9INVALID"] === undefined);
+  check("last duplicate wins", parsed.DUPE === "second", parsed.DUPE);
+
+  // Precedence: an explicit environment value must beat the file, or a one-off
+  // override (and every test that uses one) silently does nothing.
+  const target = { PRESET: "from-environment" };
+  const applied = applyEnv({ PRESET: "from-file", FRESH: "from-file" }, target);
+  check("existing environment values are never overwritten", target.PRESET === "from-environment", target.PRESET);
+  check("unset values are taken from the file", target.FRESH === "from-file", target.FRESH);
+  check("applyEnv reports only what it set", applied.join(",") === "FRESH", applied.join(","));
+
+  // The real file must still yield a usable token, since the bridge refuses to
+  // start below 32 chars and this parser is now the only thing that reads it.
+  try {
+    const realEnv = parseEnv(await readFile(new URL("./.env", import.meta.url), "utf-8"));
+    check(
+      "the real .env yields a token the bridge will accept",
+      typeof realEnv.MCP_BRIDGE_TOKEN === "string" && realEnv.MCP_BRIDGE_TOKEN.length >= 32,
+      `length ${realEnv.MCP_BRIDGE_TOKEN?.length ?? 0}`
+    );
+  } catch {
+    // No .env on this machine (CI, fresh clone) — nothing to assert.
   }
 }
 

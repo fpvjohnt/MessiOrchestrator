@@ -19,13 +19,15 @@ netstat -ano | "%SystemRoot%\System32\findstr.exe" /r /c:"TCP.*:8787 .*LISTENING
 if !errorlevel! equ 0 (
   echo [%date% %time%] bridge already listening on 8787, skipping >> "%TEMP%\mcp-startup.log"
 ) else (
-  for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0..\.env") do (
-    if "%%A"=="MCP_BRIDGE_TOKEN" set "MCP_BRIDGE_TOKEN=%%B"
-  )
-  if "!MCP_BRIDGE_TOKEN!"=="" (
-    echo [%date% %time%] ERROR: MCP_BRIDGE_TOKEN missing from .env >> "%TEMP%\mcp-startup.log"
-    exit /b 1
-  )
+  REM No .env parsing here any more. This used to pull MCP_BRIDGE_TOKEN out of
+  REM the file and set that one variable, which meant every OTHER setting
+  REM server.mjs reads came from an environment that could never contain it —
+  REM MCP_BRIDGE_PORT and friends silently fell back to their defaults however
+  REM they were configured. server.mjs now loads .env itself (bridge/load-env.mjs),
+  REM so this script no longer needs to know anything about its contents, and a
+  REM batch `for /f` no longer has to parse a file full of URLs and secrets.
+  REM A missing or too-short token is refused by the bridge itself, which says
+  REM what to do about it; that error lands in mcp-bridge.log.
   echo [%date% %time%] starting bridge >> "%TEMP%\mcp-startup.log"
   start "" /b "C:\Program Files\nodejs\node.exe" "%~dp0server.mjs" >> "%TEMP%\mcp-bridge.log" 2>&1
 )

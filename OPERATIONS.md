@@ -39,6 +39,17 @@ Startup folder
 console at logon. `start-all.cmd` skips whatever is already running, so it is
 safe to run by hand at any time.
 
+The tunnel's own config is **not** in this repo — it lives at
+`%USERPROFILE%\.cloudflared\config.yml` and routes `mcp.johntapia.com` to
+`http://localhost:8787`. Access control is Cloudflare Access on that hostname,
+configured in the Cloudflare dashboard. The bridge binds to `127.0.0.1` only,
+so the tunnel is the sole path in.
+
+**The port appears in three places.** `.env` (`MCP_BRIDGE_PORT`, read by both
+the bridge and the supervisor), that `config.yml` ingress rule, and the
+`netstat` guard in `start-all.cmd`. Change one and not the others and you get a
+bridge that is healthy, a supervisor that agrees, and a phone that gets nothing.
+
 ---
 
 ## Is it healthy?
@@ -119,6 +130,14 @@ Kill with `/T`. Each bridge session spawns an orchestrator, which spawns its
 asset servers; killing only the parent orphans the tree. That leak once put 37
 node processes and 2.46 GB on this box.
 
+> **`taskkill /T` can exit non-zero even when it worked.** It reports on every
+> process in the tree, and a descendant it cannot touch ("The process cannot
+> terminate itself") fails the whole command while the target dies anyway. If
+> you have chained kill-then-restart in one script, that non-zero exit can
+> abort the script *between* the two — leaving everything down. Run the restart
+> unconditionally, and always finish by checking `/healthz` rather than
+> trusting the exit code.
+
 ### Restart the supervisor
 
 ```sh
@@ -185,9 +204,12 @@ leading characters until commands stop resolving, and reports nothing.
 A UTF-8 character reached a log read by an ANSI viewer. Operational scripts are
 asserted to print ASCII only; if you see this, something new broke that rule.
 
-**Settings in `.env` appear to do nothing.**
-For the bridge, they genuinely do — see the warning in `.env.example`. Only
-`MCP_BRIDGE_TOKEN` is delivered to it today.
+**A setting in `.env` appears to do nothing.**
+Check whether the process that reads it has been restarted — the bridge and
+supervisor load `.env` at startup only. Note also that anything already in the
+real environment beats the file, deliberately, so a leftover `set`/`export` in
+your shell wins. The orchestrator is spawned by Claude Desktop with no
+environment and does not read `.env` at all.
 
 **Everything is up but answers are routed to the wrong specialist.**
 That is not an ops problem. `npm run golden` and `npm run paraphrase` are the
