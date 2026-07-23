@@ -81,23 +81,13 @@ const TAG_WEIGHT = 3;
 const NAME_WEIGHT = 2;
 const DESCRIPTION_WEIGHT = 1;
 
-// Description prose is CORROBORATING evidence, never primary evidence. Two
-// rules enforce that, and both were written against measured misroutes:
-//
-// 1. Each distinct description word counts ONCE. Counting with repetition
-//    meant a 249-word description scored on how often it repeated a common
-//    word, which is length, not relevance. AGENTS.md warns authors about this;
-//    the parser should not depend on every author remembering.
-// 2. The description's total is capped BELOW the confidence floor. Without it,
-//    a long description alone cleared the floor: "how do I quantize an open
-//    model to run it locally" assigned loop and openai at score 4 each with
-//    ZERO tag matches, purely on prose overlap. Tags are the deliberate
-//    routing signal; prose can now break a tie between assets that both
-//    matched a tag, but can never conjure an assignment on its own.
-//
-// Note this RAISES the bar (fewer assets qualify) — it is not the forbidden
-// move of lowering a threshold to make the numbers look better.
-const DESCRIPTION_CAP = 2;
+// Each distinct description word counts ONCE. Counting with repetition meant a
+// 249-word description scored on how often it repeated a common word — that
+// measures length, not relevance, and it dragged unrelated questions onto the
+// wordiest asset. AGENTS.md warns authors about this; the parser should not
+// depend on every author remembering. The other half of the rule — prose can
+// corroborate a match but never create one — is enforced in selectAssets,
+// where it does not disturb any score.
 
 /**
  * Scores active assets against an objective by overlapping tokens between
