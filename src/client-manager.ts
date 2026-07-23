@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { AssetConfig } from "./types.js";
+import { describeUnknownTool } from "./tool-suggest.js";
 
 // Caches the PENDING promise, not the resolved client, so two concurrent
 // first calls for the same asset share one connection attempt instead of
@@ -108,9 +109,55 @@ export async function introspectAsset(asset: AssetConfig): Promise<{ toolCount: 
   return { toolCount: result.tools.length, version: info?.version };
 }
 
+/** The text of a tool result, for inspecting an error the SDK returned rather
+ * than threw. Shape is `{ content: [{ type: "text", text }], isError }`. */
+function resultText(result: unknown): string {
+  const content = (result as { content?: unknown })?.content;
+  if (!Array.isArray(content)) return "";
+  return content.map((c) => (c as { text?: string })?.text ?? "").join(" ");
+}
+
+const NOT_FOUND = /tool\s+.*\s+not found/i;
+
 export async function callAssetTool(asset: AssetConfig, toolName: string, args: unknown) {
   const client = await connect(asset);
-  return client.callTool({ name: toolName, arguments: (args ?? {}) as Record<string, unknown> });
+  try {
+    const result = await client.callTool({ name: toolName, arguments: (args ?? {}) as Record<string, unknown> });
+    // An unknown tool comes back as an error RESULT, not a thrown error — the
+    // first version of this fix only caught the throw and did nothing for the
+    // path that actually occurs. Replaying a real logged call is what showed
+    // it. Both paths are handled now; the throw path is still real for
+    // transports that surface it that way.
+    if ((result as { isError?: boolean })?.isError && NOT_FOUND.test(resultText(result))) {
+      try {
+        const available = (await client.listTools()).tools.map((t) => t.name);
+        return {
+          content: [{ type: "text" as const, text: describeUnknownTool(asset.name, toolName, available) }],
+          isError: true,
+        };
+      } catch {
+        return result; // listing failed too — the original error is the honest answer
+      }
+    }
+    return result;
+  } catch (err) {
+    // "Tool X not found" tells the caller only what ISN'T true. It happened 13
+    // times in the real case log, always on a near-miss guess, and every one
+    // was a dead end. Answer the question they actually have — what IS it
+    // called — by listing the real tools and pointing at the closest match.
+    // Only this one error is enriched; everything else propagates untouched.
+    const message = err instanceof Error ? err.message : String(err);
+    if (!NOT_FOUND.test(message)) throw err;
+    let available: string[] = [];
+    try {
+      available = (await client.listTools()).tools.map((t) => t.name);
+    } catch {
+      // The listing is a courtesy. If it fails too, the original error is
+      // still the honest answer — don't mask a dead connection as a typo.
+      throw err;
+    }
+    throw new Error(describeUnknownTool(asset.name, toolName, available));
+  }
 }
 
 export async function disconnect(name: string): Promise<void> {

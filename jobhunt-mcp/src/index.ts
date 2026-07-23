@@ -177,15 +177,25 @@ server.registerTool(
       "How well you fit a specific job posting: pass the posting's required skills/keywords (and optionally " +
       "your skills; defaults to your saved profile). Returns a match %, what you have to mirror, the gaps, " +
       "and tailoring advice.",
+    // The description says "the posting's required skills" and "your skills",
+    // so callers wrote {posting_skills, candidate_skills} — twice, both hard
+    // failures. The parameters are `required` and `have`. Accept the words the
+    // description itself puts in the caller's head.
     inputSchema: {
-      required: z.array(z.string().max(120)).min(1).max(50).describe("The skills/keywords the posting asks for."),
+      required: z.array(z.string().max(120)).min(1).max(50).optional().describe("The skills/keywords the posting asks for."),
+      posting_skills: z.array(z.string().max(120)).min(1).max(50).optional(),
       have: z.array(z.string().max(120)).max(80).optional().describe("Your skills; defaults to your profile."),
+      candidate_skills: z.array(z.string().max(120)).max(80).optional(),
     },
   },
-  async ({ required, have }) => {
+  async ({ required, posting_skills, have, candidate_skills }) => {
     try {
-      const skills = have ?? (await profileStore.getProfile()).skills ?? [];
-      return textResult(vetting.matchJob(required, skills));
+      const wanted = required ?? posting_skills;
+      if (!wanted || wanted.length === 0) {
+        return textResult(`BOTTOM LINE: no posting skills given — pass "required" as a list of the skills/keywords the job posting asks for.`);
+      }
+      const skills = have ?? candidate_skills ?? (await profileStore.getProfile()).skills ?? [];
+      return textResult(vetting.matchJob(wanted, skills));
     } catch (err) {
       return errorResult(err);
     }

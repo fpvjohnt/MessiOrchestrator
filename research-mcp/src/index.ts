@@ -62,8 +62,15 @@ server.registerTool(
       "ranked by corroboration — a URL that several independent engines return is a stronger lead than " +
       "any single engine's top hit. Use this for quick reconnaissance; use `research` when you want " +
       "page content fetched too.",
+    // `search` takes "query" and its sibling `research` takes "question" — two
+    // near-synonyms for the same thing on two tools in the SAME server. Callers
+    // swapped them 5 times in the real case log (4 on research, 1 here), each
+    // one a hard validation failure. Renaming either would break existing
+    // callers, so both tools now accept both words. The declared name stays
+    // primary; the alias is undocumented on purpose, to steer without failing.
     inputSchema: {
-      query: z.string().min(1),
+      query: z.string().min(1).optional(),
+      question: z.string().min(1).optional(),
       providers: z
         .array(z.string())
         .optional()
@@ -71,8 +78,12 @@ server.registerTool(
       max_per_provider: z.number().int().min(1).max(20).default(8),
     },
   },
-  async ({ query, providers, max_per_provider }) => {
+  async ({ query: rawQuery, question, providers, max_per_provider }) => {
     try {
+      const query = rawQuery ?? question;
+      if (!query) {
+        return textResult(`BOTTOM LINE: nothing to search — pass "query" (this tool's parameter) with the text to search for.`);
+      }
       const { results, providerErrors } = await multiSearch(query, providers, max_per_provider);
       if (results.length === 0) {
         return textResult(
@@ -144,8 +155,12 @@ server.registerTool(
       "problems — for every obstacle the sources reveal, identify at least one concrete path forward " +
       "(a fix, a workaround, an alternative approach, or the next question to research). If the dossier " +
       "is inconclusive, say what's missing and use the follow-up leads to dig again rather than giving up.",
+    // Accepts "query" as well as "question" — see the note on `search`. This is
+    // the side callers got wrong most often (4 of the 5 swaps), because the
+    // orchestrator's own vocabulary for this concept is "query".
     inputSchema: {
-      question: z.string().min(1).describe("The question or objective to research."),
+      question: z.string().min(1).optional().describe("The question or objective to research."),
+      query: z.string().min(1).optional(),
       providers: z
         .array(z.string())
         .optional()
@@ -159,8 +174,12 @@ server.registerTool(
         .describe("How many top-ranked sources to fetch in full."),
     },
   },
-  async ({ question, providers, fetch_top }) => {
+  async ({ question: rawQuestion, query, providers, fetch_top }) => {
     try {
+      const question = rawQuestion ?? query;
+      if (!question) {
+        return textResult(`BOTTOM LINE: nothing to research — pass "question" (this tool's parameter) with what you want researched.`);
+      }
       const dossier = await buildDossier(question, providers, fetch_top);
 
       if (dossier.sources.length === 0) {

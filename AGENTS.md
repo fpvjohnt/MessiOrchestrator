@@ -52,6 +52,8 @@ Build output goes to `dist/`. Register in `data/registry.json` with `command: "n
 - Do not lower a threshold to fix routing. The lever is tags and vocabulary.
 - Do not edit `golden-set.mjs` labels to match observed behavior. Label by intent; a wrong route must show as a miss or the number is a lie.
 - Do not add network calls, API keys, or credentials to any asset.
+- **Do not let a tool's description teach a word its schema rejects.** The real case log's failed calls were overwhelmingly this: `analyze_asset` said "Given a ticker" while the parameter was `symbol`; `match_job` said "the posting's required skills" while the parameter was `required`; `search` takes `query` while its sibling `research` takes `question`. Callers used the word they were taught and the call hard-failed. Either name the parameter what the prose calls it, or accept both — several tools now accept both.
+- **Do not set a length cap you have not measured.** `ask_the_expert` capped questions at 500 characters and rejected 7 real ones between 507 and 1923, dead-ending the whole consult loop over a slightly long question. Size caps from `data/cases.json`, and keep a two-step loop's caps in sync (step 2 usually receives step 1's string).
 
 ## Done means
 

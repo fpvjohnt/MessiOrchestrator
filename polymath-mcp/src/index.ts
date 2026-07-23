@@ -64,8 +64,18 @@ server.registerTool(
       "the RIGHT specialist would handle it: their method step-by-step, the questions they'd ask you " +
       "first, their tools, and the research queries to verify current specifics. Uses your saved " +
       "set_context. Have research run the queries, then call expert_verdict with what it finds.",
+    // The cap was 500 and it was the single biggest source of failed calls in
+    // the real case log: 7 rejections at 507, 533, 585, 622, 814, 866 and 1923
+    // characters, while successful calls topped out at exactly 498 — callers
+    // write to the limit and past it. A question is free text describing a
+    // real situation; 500 characters is roughly four sentences, which is not
+    // how anyone describes a problem worth asking about. Rejecting it outright
+    // dead-ends the whole consult loop rather than answering a slightly long
+    // question. Sized from the observed maximum with headroom. Keep this in
+    // step with expert_verdict's question cap — step 2 takes the SAME string,
+    // so a tighter cap there would break every long question this one accepts.
     inputSchema: {
-      question: z.string().min(1).max(500),
+      question: z.string().min(1).max(4000),
       expert: lookupKey.optional().describe("Force a specific job title or cluster if auto-routing guesses wrong."),
     },
   },
@@ -88,7 +98,7 @@ server.registerTool(
       "found to get the final playbook — findings folded into the expert's method, the first concrete " +
       "move, and the follow-up loop.",
     inputSchema: {
-      question: z.string().min(1).max(500).describe("The same question passed to ask_the_expert."),
+      question: z.string().min(1).max(4000).describe("The same question passed to ask_the_expert."),
       findings: z.string().min(1).max(2000).describe("What research found when it verified the specifics."),
       expert: lookupKey.optional().describe("Same expert/cluster hint as before, if one was used."),
     },
@@ -188,7 +198,7 @@ server.registerTool(
       "and the EXACT research queries to verify the current best-practice tools (tools drift fast — never " +
       "guess). Have research run those, then call finalize_build with what it finds.",
     inputSchema: {
-      idea: z.string().min(1).max(300),
+      idea: z.string().min(1).max(2000),
       cluster_hint: lookupKey.optional().describe("Force a cluster if auto-detection guesses wrong."),
     },
   },
@@ -209,7 +219,7 @@ server.registerTool(
       "After research verifies the current stack for a 'build_it' plan, call this with what it found to get " +
       "the actual architecture, the smallest first step, and the risks to watch.",
     inputSchema: {
-      idea: z.string().min(1).max(300),
+      idea: z.string().min(1).max(2000),
       findings: z.string().min(1).max(2000).describe("What research found when it verified the stack."),
     },
   },
@@ -234,8 +244,8 @@ server.registerTool(
       "Given your current role and a target role/skill, the real gap, the ladder, how to close it without " +
       "faking anything, and the research queries to verify what's actually in demand right now.",
     inputSchema: {
-      current_role: z.string().min(1).max(200),
-      target_role: z.string().min(1).max(200),
+      current_role: z.string().min(1).max(500),
+      target_role: z.string().min(1).max(500),
     },
   },
   async ({ current_role, target_role }) => {

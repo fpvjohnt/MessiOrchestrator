@@ -108,10 +108,14 @@ server.registerTool(
       "technique (a fine-tuning method, a retriever) actually beats the simpler option. Returns authoritative sources + hype red flags + " +
       "research queries so research can verify it; then call practice_verdict. Never answers a 'what's the current best way' question from " +
       "stale memory — tutorials in this space rot in months.",
-    inputSchema: { topic: freeText },
+    // A real call arrived as {practice: "..."} — the tool is named
+    // check_practice, so that is the word its own name teaches. Accept it.
+    inputSchema: { topic: freeText.optional(), practice: freeText.optional() },
   },
-  async ({ topic }) => {
+  async ({ topic: rawTopic, practice }) => {
     try {
+      const topic = rawTopic ?? practice;
+      if (!topic) return textResult(`BOTTOM LINE: nothing to check — pass "topic" with the practice or API you want verified.`);
       return textResult(checkPractice(topic));
     } catch (err) {
       return errorResult(err);

@@ -154,16 +154,30 @@ server.registerTool(
       "(SEC EDGAR filings, insider Form 4 buys/sells, 8-K mergers, 10-K financials, Stooq price history) " +
       "+ news queries + the 6 signals to score. Research then fetches; feed findings to score_signals. " +
       "Education, not a buy/sell call.",
+    // The description says "Given a ticker (AAPL)" while the parameter is
+    // called `symbol` — so the tool taught the caller a word it then rejected,
+    // and a real call arrived as {ticker: "ALK"} and failed validation.
+    // Accepting both is the honest fix: the prose and the schema now agree on
+    // every word either of them uses.
     inputSchema: {
       symbol: z
         .string()
         .regex(/^[A-Za-z0-9.\-]{1,20}$/, "Symbol must be 1-20 chars: letters, digits, dot, dash only.")
+        .optional()
         .describe("Ticker like AAPL, or coin like BTC/ethereum."),
+      ticker: z
+        .string()
+        .regex(/^[A-Za-z0-9.\-]{1,20}$/, "Ticker must be 1-20 chars: letters, digits, dot, dash only.")
+        .optional(),
       type: z.enum(["stock", "crypto"]).default("stock"),
     },
   },
-  async ({ symbol, type }) => {
+  async ({ symbol: rawSymbol, ticker, type }) => {
     try {
+      const symbol = rawSymbol ?? ticker;
+      if (!symbol) {
+        return textResult(`BOTTOM LINE: no ticker given — pass "symbol" (e.g. AAPL, or BTC with type "crypto").`);
+      }
       return textResult(analysis.analyzeAsset(symbol, type));
     } catch (err) {
       return errorResult(err);

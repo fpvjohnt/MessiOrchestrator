@@ -28,6 +28,7 @@ import { CLUSTERS, resolveCluster } from "./polymath-mcp/dist/clusters.js";
 import { buildIt } from "./polymath-mcp/dist/build.js";
 import { askTheExpert } from "./polymath-mcp/dist/consult.js";
 import { selectAssets } from "./dist/router.js";
+import { suggestTool, describeUnknownTool, nameSimilarity } from "./dist/tool-suggest.js";
 import { checkAssets, renderHealth } from "./dist/health.js";
 import { synthesizeCase } from "./dist/synthesis.js";
 // New knowledge assets — their reverse-index resolvers (same pattern as polymath's title index).
@@ -169,6 +170,34 @@ for (const t of [...routeCases, ...semanticCases]) {
   if (t.includes) check(`route "${short}…" includes ${t.includes}${why}`, t.includes.every((a) => assigned.includes(a)), `got [${assigned}]`);
   if (t.excludes) check(`route "${short}…" excludes ${t.excludes}${why}`, t.excludes.every((a) => !assigned.includes(a)), `got [${assigned}]`);
 }
+
+// ── 4b. Unknown-tool suggestions (every guess below is from the real log) ───
+// 13 of 590 logged calls named a tool that does not exist. These are those
+// guesses, checked against the asset's actual tool list.
+const HOMEBUYER_TOOLS = ["affordability", "set_profile", "get_profile", "property_investigation", "closing_costs"];
+const suggestCases = [
+  // Near-misses a suggestion should catch.
+  { guess: "red_flags", tools: ["red_flag", "find_care", "which_specialist"], expect: "red_flag", why: "one character apart" },
+  { guess: "research_question", tools: ["research", "search", "fetch_page"], expect: "research", why: "containment" },
+  { guess: "property_lookup", tools: HOMEBUYER_TOOLS, expect: "property_investigation", why: "shared token" },
+  { guess: "list_tools", tools: ["list_providers", "search"], expect: "list_providers", why: "shared token" },
+  // No plausible match — a confident wrong guess is worse than none, so the
+  // tool list alone must carry the answer.
+  { guess: "does_not_exist", tools: HOMEBUYER_TOOLS, expect: undefined, why: "nothing close" },
+  { guess: "consult", tools: ["ask_the_expert", "expert_verdict", "build_it"], expect: undefined, why: "right intent, no shared text" },
+];
+for (const t of suggestCases) {
+  check(`suggestTool("${t.guess}") → ${t.expect ?? "no suggestion"} (${t.why})`, suggestTool(t.guess, t.tools) === t.expect, `got ${suggestTool(t.guess, t.tools)}`);
+}
+// The message must always carry the real names — that is the part that fixes
+// the caller's next attempt, with or without a suggestion.
+const unknownMsg = describeUnknownTool("homebuyer", "does_not_exist", HOMEBUYER_TOOLS);
+check("unknown-tool message lists every real tool", HOMEBUYER_TOOLS.every((t) => unknownMsg.includes(t)), unknownMsg);
+check("unknown-tool message omits a bogus suggestion", !unknownMsg.includes("Did you mean"), unknownMsg);
+check("unknown-tool message suggests when close", describeUnknownTool("healthguide", "red_flags", ["red_flag"]).includes('Did you mean "red_flag"'));
+check("unknown-tool message handles an asset with no tools", describeUnknownTool("x", "y", []).includes("no tools registered"));
+check("nameSimilarity: identical is 1", nameSimilarity("research", "research") === 1);
+check("nameSimilarity: unrelated is low", nameSimilarity("affordability", "steelman") < 0.5);
 
 // ── 5. Overseer render logic (synthetic data — no dependency on real cases) ─
 const fakeCase = {

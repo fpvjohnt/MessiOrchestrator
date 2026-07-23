@@ -173,10 +173,14 @@ server.registerTool(
       "feature exists. Returns authoritative sources (developers.openai.com first), the research queries to run, and the red flags " +
       "(starting with the false 'Chat Completions is deprecated' claim). Then call openai_verdict. This asset NEVER answers a " +
       "current-specifics question from memory — that's how an expert lies with confidence.",
-    inputSchema: { topic: freeText },
+    // A real call arrived as {claim: "..."} — the tool verifies claims, so
+    // that is the word a caller reaches for. Accept it.
+    inputSchema: { topic: freeText.optional(), claim: freeText.optional() },
   },
-  async ({ topic }) => {
+  async ({ topic: rawTopic, claim }) => {
     try {
+      const topic = rawTopic ?? claim;
+      if (!topic) return textResult(`BOTTOM LINE: nothing to check — pass "topic" with the OpenAI specific you want verified.`);
       return textResult(checkOpenai(topic));
     } catch (err) {
       return errorResult(err);
