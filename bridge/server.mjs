@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { ipKeyGenerator } from "express-rate-limit";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import { createProvider } from "./oauth-provider.mjs";
 
@@ -114,8 +115,12 @@ const rateLimitHits = new Map(); // client key -> { count, windowStart }
 // the only route to this loopback port, so that header is the one caller
 // identifier here that can't be forged. Falling back to the raw socket peer
 // keeps a direct local caller bucketed too (they'd already be on the box).
+// ipKeyGenerator collapses an IPv6 address to its /56 subnet, so a client with
+// an IPv6 allocation can't just walk addresses within it to get a fresh bucket
+// per request. It's a no-op for IPv4.
 function clientKey(req) {
-  return req.get("cf-connecting-ip") ?? req.socket.remoteAddress ?? "unknown";
+  const ip = req.get("cf-connecting-ip") ?? req.socket.remoteAddress;
+  return ip ? ipKeyGenerator(ip) : "unknown";
 }
 
 function rateLimitAuthorize(req, res, next) {
@@ -148,6 +153,17 @@ setInterval(() => {
 
 app.use("/authorize", rateLimitAuthorize);
 
+// The SDK's auth router rate-limits its own endpoints with express-rate-limit,
+// but that limiter defaults to keying on req.ip — which, with "trust proxy"
+// true, is read straight out of the caller's X-Forwarded-For header. It is
+// defeated by the exact spoof that defeated the /authorize limiter above, and
+// it says so at startup (ERR_ERL_PERMISSIVE_TRUST_PROXY). Hand every endpoint
+// the same unforgeable key. Only keyGenerator is passed, and the SDK spreads
+// our config last, so its own windowMs/max/headers/message defaults survive
+// untouched (authorize 100/15min, token 50/15min, register 20/hr,
+// revoke 50/15min).
+const sdkRateLimit = { keyGenerator: clientKey };
+
 // Mounts /authorize, /token, /register, /revoke and the .well-known metadata
 // documents the connector uses for discovery. MUST be at the app root.
 app.use(
@@ -157,6 +173,10 @@ app.use(
     resourceServerUrl: new URL("/mcp", ISSUER),
     resourceName: "John MCP Orchestrator",
     scopesSupported: ["mcp"],
+    authorizationOptions: { rateLimit: sdkRateLimit },
+    tokenOptions: { rateLimit: sdkRateLimit },
+    clientRegistrationOptions: { rateLimit: sdkRateLimit },
+    revocationOptions: { rateLimit: sdkRateLimit },
   })
 );
 
