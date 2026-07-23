@@ -50,7 +50,7 @@ export const GOLDEN = [
   // healthguide
   { q: "I have a migraine which kind of doctor should I see", expect: ["healthguide"] },
   { q: "how much protein do I need to build muscle", expect: ["healthguide"] },
-  { q: "is this supplement's health claim actually backed by science", expect: ["healthguide"] },
+  { q: "is this supplement's health claim actually backed by science", expect: ["healthguide"], alsoOk: ["research"], note: "VERIFIER: a claim asked to be checked against evidence is the maker-can't-verify-itself case (src/index.ts protocol), so research co-assigns as the independent checker. Labeled by INTENT, consistent with the rent-vs-buy/deprecation verifier labels. healthguide answers from a fixed map; 'backed by science' is exactly what an offline specialist should not self-certify." },
   { q: "I've been feeling really anxious lately who should I talk to", expect: ["healthguide"] },
   { q: "what kind of specialist treats ongoing stomach problems", expect: ["healthguide"] },
 
@@ -71,7 +71,7 @@ export const GOLDEN = [
 
   // curiosity (science)
   { q: "why do black holes form and what happens inside them", expect: ["curiosity"] },
-  { q: "is the ancient aliens theory about the pyramids actually true", expect: ["curiosity"] },
+  { q: "is the ancient aliens theory about the pyramids actually true", expect: ["curiosity"], alsoOk: ["research"], note: "VERIFIER: 'actually true' asks for an independent check of a claim, the maker-can't-verify-itself case (src/index.ts protocol), so research co-assigns. Labeled by INTENT, consistent with the other verifier labels. curiosity owns the topic; whether the theory holds up is what an offline specialist should not self-certify." },
 
   // education
   { q: "what math class do I take after algebra 2", expect: ["education"] },

@@ -47,6 +47,9 @@ const PROBES = [
   // in an unrelated sense
   { q: "convert this paragraph to speech with a natural voice", want: "elevenlabs" },
   { q: "transcribe this audio recording into text", want: "elevenlabs" },
+  // claim-check: research rides along as the independent checker, specialist leads
+  { q: "is it true that eating carrots improves your night vision", want: "research" },
+  { q: "debunk the myth that we only use ten percent of our brain", want: "research" },
 ];
 
 let pass = 0;

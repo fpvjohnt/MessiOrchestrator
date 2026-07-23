@@ -29,7 +29,7 @@ import { CLUSTERS, resolveCluster } from "./polymath-mcp/dist/clusters.js";
 import { buildIt } from "./polymath-mcp/dist/build.js";
 import { askTheExpert } from "./polymath-mcp/dist/consult.js";
 import { selectAssets } from "./dist/router.js";
-import { needsResearchShape, explainRouting } from "./dist/router.js";
+import { needsResearchShape, explainRouting, needsClaimCheck } from "./dist/router.js";
 import { suggestTool, describeUnknownTool, nameSimilarity } from "./dist/tool-suggest.js";
 import { checkAssets, renderHealth } from "./dist/health.js";
 import { synthesizeCase, isFailed, renderOutcome } from "./dist/synthesis.js";
@@ -783,6 +783,17 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
   check("explainRouting: a floor-passing loser under the ratio is below-ratio", e.candidates.find((c) => c.name === "beta")?.verdict === "below-ratio", JSON.stringify(e.candidates));
   check("explainRouting: a no-match asset is below-floor", e.candidates.find((c) => c.name === "gamma")?.verdict === "below-floor");
   check("explainRouting: every candidate carries a verdict", e.candidates.every((c) => typeof c.verdict === "string"));
+}
+
+// ── 14a1d. needsClaimCheck: co-assign the verifier on "is it true" claims ────
+{
+  check("claimCheck: 'is it true that ...' fires", needsClaimCheck("is it true that carrots improve night vision"));
+  check("claimCheck: 'actually backed by science' fires", needsClaimCheck("is this supplement's health claim actually backed by science"));
+  check("claimCheck: 'actually true' fires", needsClaimCheck("is the ancient aliens theory actually true"));
+  check("claimCheck: 'debunk ... a myth' fires", needsClaimCheck("debunk the myth that we use ten percent of our brain"));
+  // A passing mention of "true" must NOT fire it — narrow phrases only.
+  check("claimCheck: a bare 'true' does not fire", needsClaimCheck("what is a true north bearing") === false);
+  check("claimCheck: an ordinary how-to does not fire", needsClaimCheck("how do I refinance my mortgage") === false);
 }
 
 // ── 14a2. Corroboration must not be claimed when it cannot vary ─────────────
