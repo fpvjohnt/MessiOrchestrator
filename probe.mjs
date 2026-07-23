@@ -39,6 +39,10 @@ const PROBES = [
   { q: "how do I write a for loop in python", mustNot: "loop" },
   // 'cents' / 'odds' senses that AGENTS.md records as collision-prone
   { q: "how many cents on the dollar will this debt settle for", mustNot: "kalshi" },
+  // 'posting' / 'profile': jobhunt hiring frame vs other senses of the words
+  { q: "score this Analytics Engineer posting against my resume profile", want: "jobhunt" },
+  { q: "how do I go about posting bail for a friend", want: "lawguide", mustNot: "jobhunt" },
+  { q: "what asset allocation fits my risk profile in retirement", want: "nestegg", mustNot: "jobhunt" },
 ];
 
 let pass = 0;

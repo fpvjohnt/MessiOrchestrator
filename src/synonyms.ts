@@ -80,6 +80,18 @@ const PHRASES: Record<string, string> = {
   "applicant tracking": "ats",
   "resume screening": "ats",
 
+  // → jobhunt. Scoring a CANDIDATE against a POSTING is jobhunt's frame, but the
+  // shared specialty-title words ("Data Analytics Engineer") score higher for
+  // polymath's professional-knowledge tags, so the objective lost to polymath —
+  // the single largest real-intent miss class (7 cases). These carry the hiring
+  // frame to a jobhunt tag. Deliberately bigrams, never the bare "posting"
+  // ("posting bail" is lawguide) or "profile" ("risk profile" is nestegg).
+  "posting against": "job",
+  "the posting": "job",
+  "profile against": "resume",
+  "candidate profile": "resume",
+  "resume against": "resume",
+
   // → education. "test"/"final"/"material" are all ordinary English words; only
   // the academic phrasing around them means school.
   "prepare for a test": "exam",

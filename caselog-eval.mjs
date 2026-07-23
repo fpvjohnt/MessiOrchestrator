@@ -35,6 +35,17 @@ import { warnIfStaleBuild } from "./build-freshness.mjs";
 // Explicit and printed, so the filter can be audited rather than trusted.
 export const PROBE = /^(concurrent probe|latency demo|warm |smoke|test case|probe\b|demo\b|ping\b)/i;
 
+// The operator's own DEV/SMOKE runs that slipped past PROBE and were being
+// graded as real traffic — 13 of them, and two injected label garbage (an
+// "end-to-end verification of all assets" case makes expected = all 7 assets).
+// Each pattern is anchored/narrow so it cannot swallow real questions that merely
+// contain a word like "probe" or "test": verified against the 4 genuine-traffic
+// objectives that do ("red team ... probe our model", "how do I test an AI API
+// endpoint in Postman", "Map the end-to-end FLOW ...", "Verify the current
+// command ...") — none match. Add a pattern here only with the same discipline.
+export const DEV_TEST =
+  /^(error|latency|abuse|load|stress|concurrency) (probe|storm|test)\b|^live test\b|^final smoke test\b|^test (title|index)\b|\bend-to-end (verification|test)\b|\btest case$|^post-reboot check\b/i;
+
 /**
  * Decide what a single case should be graded against. PURE — no I/O, no router.
  * Returns either { objective, expected, source } or { skip } with a reason, so
@@ -52,7 +63,7 @@ export const PROBE = /^(concurrent probe|latency demo|warm |smoke|test case|prob
 export function expectedForCase(c) {
   const objective = (c.objective ?? "").trim();
   if (!objective) return { skip: "no-objective" };
-  if (PROBE.test(objective)) return { skip: "probe" };
+  if (PROBE.test(objective) || DEV_TEST.test(objective)) return { skip: "probe" };
 
   if (Array.isArray(c.shouldHaveRouted) && c.shouldHaveRouted.length) {
     return { objective, expected: c.shouldHaveRouted, source: "label" };
@@ -180,6 +191,6 @@ async function main() {
 // Self-execute only when run directly (node caselog-eval.mjs). Importing the
 // module for its pure exports — as regression.mjs does — must NOT run main,
 // print, or call process.exit.
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }
