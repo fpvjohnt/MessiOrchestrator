@@ -152,6 +152,57 @@ respawn), then `health_check` to confirm.
 > gate-check with golden/paraphrase, smoke-test one tool, add regression
 > coverage, and keep `npm run check` green. Verify with `health_check` at the end.
 
+## 10. Monitoring & alerts
+
+`bridge/supervisor.mjs` watches the phone's path to the orchestrator. It is
+started at logon by `supervise.vbs` → `supervise.cmd`, probes every 30s, and
+restarts what it finds broken.
+
+**It probes for an answer, not for a process.** A wedged bridge still holds its
+listening socket and a cloudflared with zero edge connections is still a running
+executable — both pass a `netstat`/`tasklist` check throughout a total outage.
+
+| component | probe | down when |
+|---|---|---|
+| bridge | `GET 127.0.0.1:8787/healthz` | no answer in 5s, non-200, or `ok !== true` |
+| cloudflared | `GET 127.0.0.1:20241/ready` | no answer, or `readyConnections < 1` |
+
+`--metrics 127.0.0.1:20241` is pinned in `start-all.cmd` — unset, cloudflared
+picks its own port and the probe becomes a guess.
+
+**Escalation.** Two consecutive failures before any restart (one blip is not
+worth dropping live sessions). Then backoff — 2, 4, 8, 16, 32 further failed
+cycles between retries — so a component that *cannot* start isn't killed every
+60s forever. Alerts fire on transition, on each restart, and every 30 min while
+still broken; a recovery notice closes it out. A blip that never reached the
+alert threshold recovers silently.
+
+**Degraded** is a third state: answering, but `oldestIdleMin` has passed twice
+the reap TTL, meaning the session reaper has stopped. It alerts and never
+restarts — killing a bridge that is still serving would cost more than the leak.
+
+**Where alerts go.** Windows toast + `logs/alerts.log`, always. Toast only
+reaches you at the machine; for anywhere else add a webhook to `.env`:
+
+```sh
+# ntfy.sh needs no account — pick an unguessable topic and subscribe on your phone
+MCP_ALERT_WEBHOOK=https://ntfy.sh/<your-unguessable-topic>
+MCP_ALERT_WEBHOOK_FORMAT=ntfy        # or: slack | discord | json
+MCP_ALERT_TOAST=0                    # optional: silence desktop toasts
+```
+
+Other knobs: `MCP_SUPERVISOR_INTERVAL_MS`, `MCP_SUPERVISOR_PROBE_TIMEOUT_MS`,
+`MCP_SUPERVISOR_FAILURES_BEFORE_RESTART`, `MCP_ALERT_REPEAT_MS`,
+`MCP_TUNNEL_METRICS_PORT`.
+
+**Windows scripts must be CRLF.** `cmd.exe` does not reject an LF-only batch
+file — it half-executes it, eating leading characters until commands stop
+resolving. `start-all.cmd` hit this: its "already listening?" guard silently
+evaluated as failed, it logged `starting bridge`, started nothing, and never
+reached the cloudflared half. `.gitattributes` pins `eol=crlf` and
+`regression.mjs` asserts it, because that governs what git writes but not what
+an in-place edit leaves behind.
+
 ---
 
 *The pattern is domain-agnostic: swap the specialists and it works for anything —

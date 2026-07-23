@@ -36,5 +36,10 @@ if !errorlevel! equ 0 (
   echo [%date% %time%] cloudflared already running, skipping >> "%TEMP%\mcp-startup.log"
 ) else (
   echo [%date% %time%] starting cloudflared >> "%TEMP%\mcp-startup.log"
-  start "" /b "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel run mcp >> "%TEMP%\mcp-cloudflared.log" 2>&1
+  REM --metrics is pinned so supervisor.mjs can probe /ready for the number of
+  REM live connections to the Cloudflare edge — the only signal that separates
+  REM "cloudflared.exe is running" from "the phone can actually reach us".
+  REM Left unset, cloudflared picks its own port from a range it is free to
+  REM change between releases, and the probe becomes a guess.
+  start "" /b "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel run --metrics 127.0.0.1:20241 mcp >> "%TEMP%\mcp-cloudflared.log" 2>&1
 )
