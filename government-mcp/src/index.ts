@@ -154,6 +154,20 @@ async function main() {
   await server.connect(transport);
   process.stdin.on("end", () => process.exit(0));
   process.stdin.on("close", () => process.exit(0));
+
+  // Parent-death watchdog: if our parent (the orchestrator) dies WITHOUT cleanly
+  // closing our stdin — a hard kill, crash, or abrupt reboot — the stdin-EOF
+  // handlers above may never fire and we would linger as an orphan. Poll the
+  // parent's liveness and self-terminate when it is gone, so residual process
+  // trees can't pile up across reboots. unref() so this timer never keeps us alive.
+  const __parentPid = process.ppid;
+  setInterval(() => {
+    try {
+      process.kill(__parentPid, 0); // signal 0 = liveness probe; throws if gone
+    } catch {
+      process.exit(0);
+    }
+  }, 5000).unref();
 }
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => process.exit(0));
