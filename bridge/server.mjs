@@ -67,9 +67,30 @@ const SESSION_IDLE_MS = Number(process.env.MCP_BRIDGE_SESSION_IDLE_MS ?? 30 * 60
 // map AND both onclose guards below no-op — nothing in the process holds a
 // reference and only a PID kill would reap it.
 const HANDSHAKE_GRACE_MS = Number(process.env.MCP_BRIDGE_HANDSHAKE_GRACE_MS ?? 60 * 1000);
+// Hard ceiling on concurrent sessions. The idle reaper bounds sessions over
+// TIME but nothing bounded them at an INSTANT: the log shows three opened in 26
+// seconds, and each session is an orchestrator that can warm all 22 assets at
+// ~80MB apiece. Eleven concurrent sessions is ~19GB. When the cap is hit the
+// OLDEST is reaped, because a single user's newest session is the one they are
+// actually looking at.
+const MAX_SESSIONS = Math.max(1, Number(process.env.MCP_BRIDGE_MAX_SESSIONS ?? 4));
 
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
+}
+
+/**
+ * Which sessions to reap to get back under MAX_SESSIONS, oldest-first.
+ * `keepId` (the session that just handshook) is never a candidate — the user is
+ * looking at that one.
+ */
+function sessionsOverCap(keepId) {
+  const candidates = [...sessions.entries()]
+    .filter(([id]) => id !== keepId)
+    .sort((a, b) => a[1].lastSeen - b[1].lastSeen)
+    .map(([id]) => id);
+  const excess = sessions.size - MAX_SESSIONS;
+  return excess > 0 ? candidates.slice(0, excess) : [];
 }
 
 async function closeSession(sessionId) {
@@ -97,6 +118,13 @@ async function openSession() {
       clearTimeout(handshakeTimer);
       sessions.set(sessionId, { http, child, lastSeen: Date.now() });
       log(`session ${sessionId} opened (${sessions.size} active)`);
+      // Evict oldest-first until under the cap. Done AFTER inserting so the new
+      // session is never the one reaped, and awaited nowhere — a slow child
+      // close must not delay the handshake that just succeeded.
+      for (const id of sessionsOverCap(sessionId)) {
+        log(`session cap ${MAX_SESSIONS} reached — reaping oldest session ${id}`);
+        void closeSession(id); // closeSession removes it from the map itself
+      }
     },
   });
 

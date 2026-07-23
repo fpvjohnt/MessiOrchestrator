@@ -1,4 +1,5 @@
 import type { AssetConfig, Case } from "./types.js";
+import { isFailed } from "./failure.js";
 
 interface AssetStats {
   calls: number;
@@ -16,7 +17,7 @@ export function auditReport(cases: Case[], assets: AssetConfig[], statusFilter?:
     for (const entry of c.log) {
       const stats = byAsset.get(entry.asset) ?? { calls: 0, errors: 0 };
       stats.calls += 1;
-      if (entry.error) stats.errors += 1;
+      if (isFailed(entry)) stats.errors += 1;
       byAsset.set(entry.asset, stats);
     }
   }

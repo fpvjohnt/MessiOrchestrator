@@ -180,7 +180,7 @@ server.registerTool(
   async ({ topic: rawTopic, claim }) => {
     try {
       const topic = rawTopic ?? claim;
-      if (!topic) return textResult(`BOTTOM LINE: nothing to check — pass "topic" with the OpenAI specific you want verified.`);
+      if (!topic) return { ...textResult(`BOTTOM LINE: nothing to check — pass "topic" with the OpenAI specific you want verified.`), isError: true };
       return textResult(checkOpenai(topic));
     } catch (err) {
       return errorResult(err);

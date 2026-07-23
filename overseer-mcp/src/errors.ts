@@ -1,4 +1,5 @@
 import type { Case } from "./types.js";
+import { isFailed, failureMessage } from "./failure.js";
 
 // audit_report tells you an asset HAD errors; this tells you WHAT they were.
 // Groups identical-shaped failures so 20 of the same error read as one line
@@ -27,9 +28,9 @@ export function analyzeErrors(cases: Case[], assetFilter?: string): string {
   const errs: ErrEntry[] = [];
   for (const c of cases) {
     for (const e of c.log) {
-      if (!e.error) continue;
+      if (!isFailed(e)) continue;
       if (assetFilter && e.asset !== assetFilter) continue;
-      errs.push({ asset: e.asset, tool: e.tool, message: e.error, caseId: c.id, timestamp: e.timestamp });
+      errs.push({ asset: e.asset, tool: e.tool, message: failureMessage(e), caseId: c.id, timestamp: e.timestamp });
     }
   }
 

@@ -176,7 +176,7 @@ server.registerTool(
     try {
       const symbol = rawSymbol ?? ticker;
       if (!symbol) {
-        return textResult(`BOTTOM LINE: no ticker given — pass "symbol" (e.g. AAPL, or BTC with type "crypto").`);
+        return { ...textResult(`BOTTOM LINE: no ticker given — pass "symbol" (e.g. AAPL, or BTC with type "crypto").`), isError: true };
       }
       return textResult(analysis.analyzeAsset(symbol, type));
     } catch (err) {

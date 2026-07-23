@@ -115,7 +115,7 @@ server.registerTool(
   async ({ topic: rawTopic, practice }) => {
     try {
       const topic = rawTopic ?? practice;
-      if (!topic) return textResult(`BOTTOM LINE: nothing to check — pass "topic" with the practice or API you want verified.`);
+      if (!topic) return { ...textResult(`BOTTOM LINE: nothing to check — pass "topic" with the practice or API you want verified.`), isError: true };
       return textResult(checkPractice(topic));
     } catch (err) {
       return errorResult(err);

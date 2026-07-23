@@ -30,7 +30,8 @@ import { askTheExpert } from "./polymath-mcp/dist/consult.js";
 import { selectAssets } from "./dist/router.js";
 import { suggestTool, describeUnknownTool, nameSimilarity } from "./dist/tool-suggest.js";
 import { checkAssets, renderHealth } from "./dist/health.js";
-import { synthesizeCase } from "./dist/synthesis.js";
+import { synthesizeCase, isFailed } from "./dist/synthesis.js";
+import { isFailed as ovIsFailed, failureMessage as ovFailureMessage } from "./overseer-mcp/dist/failure.js";
 // New knowledge assets — their reverse-index resolvers (same pattern as polymath's title index).
 import { DOMAINS, resolveDomain } from "./curiosity-mcp/dist/domains.js";
 import { PRIMITIVES, resolvePrimitive } from "./openai-mcp/dist/primitives.js";
@@ -490,7 +491,19 @@ for (const [label, out] of TOOL_SMOKE) {
 check("government keeps its not-legal-advice disclaimer", immigrationPaths("japan").toLowerCase().includes("not legal advice"));
 check("faiths stays neutral", explainFaith("islam").toLowerCase().includes("evenhanded") || explainFaith("islam").toLowerCase().includes("doesn't tell you"));
 check("communication read_people rejects mind-reading/lie-detection", readPeople().toLowerCase().includes("cannot") && readPeople().toLowerCase().includes("detect lies"));
-check("curiosity claim_verdict resolves a specific family (Mandarin→right domain via explore)", curExplore("mandarin") !== undefined);
+// This assertion used to read `curExplore("mandarin") !== undefined` under the
+// name "resolves a specific family (Mandarin→right domain)". explore() returns
+// a string unconditionally, so it passed for ANY input and would still pass if
+// the function were replaced by `() => "x"`. What it actually returns for
+// "mandarin" is "Not sure which field…" — the opposite of what the name
+// claimed. The honest behaviour is the REFUSAL: a language belongs to
+// linguistics, and curiosity saying so is correct.
+check(
+  "curiosity: a language is NOT a science field — explore refuses it honestly",
+  curExplore("mandarin").toLowerCase().includes("not sure"),
+  curExplore("mandarin").slice(0, 80)
+);
+check("curiosity: a real science topic still resolves", !curExplore("quantum").toLowerCase().includes("not sure"));
 check("loop eval_loop teaches consistency ≠ correctness", evalLoop().toLowerCase().includes("consistency") && evalLoop().toLowerCase().includes("correctness"));
 check("loop myth_vs_reality debunks 'more agents = better'", loopMyth().toLowerCase().includes("more agents"));
 check("loop design_loop defaults to the simplest loop", designLoop("do a thing").toLowerCase().includes("simplest loop"));
@@ -634,6 +647,48 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
   check("kalshi: max loss exceeds the bare stake (fees are sunk)", maxLoss > r.price * r.contracts);
   const out = kaPriceCheck({ your_probability: 60, market_price: 50, contracts: 100 });
   check("kalshi: printed max loss equals printed total cost", /Max loss \/ max gain\s+\$51\.75 \/ \$48\.25/.test(out), out.split("\n").find((l) => l.includes("Max loss")) ?? "");
+}
+
+// ── 14a. A failed call must COUNT as failed, both ways it can fail ──────────
+// An asset fails two ways: the orchestrator's call throws (entry.error), or the
+// MCP tool returns a normal result with isError:true (bad arguments, unknown
+// tool, HTTP failure inside the asset). Every consumer keyed off entry.error
+// alone. Real case log: 6 entries carry `error`, 50 carry `result.isError` —
+// nine failures in ten were invisible to synthesis, the audit report, and the
+// error analyzer. Worse, resultText returned the error payload as content, so a
+// hard failure rendered as "(no headline extracted … e.g. a dossier)".
+{
+  const mkCase = (log) => ({
+    id: "f1", objective: "demo", assignedAssets: ["alpha"], status: "closed",
+    openedAt: "2026-01-01T00:00:00Z", closedAt: "2026-01-01T00:01:00Z", log,
+  });
+  const thrown = { asset: "alpha", tool: "t", arguments: {}, error: "boom", timestamp: "2026-01-01T00:00:30Z" };
+  const returned = {
+    asset: "alpha", tool: "t", arguments: {},
+    result: { content: [{ type: "text", text: "MCP error -32602: Tool calculate_dti not found" }], isError: true },
+    timestamp: "2026-01-01T00:00:30Z",
+  };
+  check("isFailed: a thrown error counts", isFailed(thrown));
+  check("isFailed: an isError RESULT counts (the 50 that didn't)", isFailed(returned));
+  check("isFailed: a normal result does not", !isFailed({ asset: "a", tool: "t", arguments: {}, result: { content: [{ type: "text", text: "BOTTOM LINE: fine" }] }, timestamp: "x" }));
+
+  const out = synthesizeCase(mkCase([returned]));
+  check("synthesis counts an isError result as an errored call", /1 call\(s\) errored/.test(out), out);
+  check("synthesis does not call a failed call 'a dossier'", !out.includes("e.g. a dossier"), out);
+  check("synthesis does not lift the error payload into MERGED KEY POINTS", !out.includes("calculate_dti"), out);
+
+  // The overseer's own copy must agree — the two packages cannot share code.
+  check("overseer isFailed agrees on a thrown error", ovIsFailed(thrown));
+  check("overseer isFailed agrees on an isError result", ovIsFailed(returned));
+  check("overseer failureMessage reads the isError payload", ovFailureMessage(returned).includes("calculate_dti"));
+
+  // A research-only case with no sources must still be flagged. The old guard
+  // excluded exactly that case — when the one asset that CAN cite sources
+  // found none, which is when it matters most.
+  const researchOnly = synthesizeCase(mkCase([
+    { asset: "research", tool: "research", arguments: {}, result: { content: [{ type: "text", text: "BOTTOM LINE: nothing found." }] }, timestamp: "2026-01-01T00:00:30Z" },
+  ]));
+  check("synthesis flags 'no sources' even on a research-only case", researchOnly.includes("No sources cited"), researchOnly);
 }
 
 // ── 14b1. No tag may be claimed by two active assets ────────────────────────

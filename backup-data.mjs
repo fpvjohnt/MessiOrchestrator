@@ -68,10 +68,16 @@ if (resolve(destRoot) === resolve(ROOT, "backups")) {
 
 // Retention: keep only the most recent N run folders (by name — the ISO
 // timestamp format sorts chronologically as a string).
+// Only TIMESTAMPED run folders participate in retention. A hand-made directory
+// like "registry-pre-hygiene" sorts after every "2026-…" name, so it was
+// permanently treated as the newest backup and permanently occupied one of the
+// N slots — silently reducing real retention by one, forever.
+const TIMESTAMPED = /^\d{4}-\d{2}-\d{2}T/;
 const entries = await readdir(destRoot, { withFileTypes: true });
 const runDirs = entries
   .filter((e) => e.isDirectory())
   .map((e) => e.name)
+  .filter((name) => TIMESTAMPED.test(name))
   .sort();
 const stale = runDirs.slice(0, Math.max(0, runDirs.length - keep));
 for (const name of stale) {

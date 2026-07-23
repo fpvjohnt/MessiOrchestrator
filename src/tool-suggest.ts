@@ -40,7 +40,14 @@ export function nameSimilarity(guess: string, real: string): number {
   const b = real.toLowerCase();
   if (a === b) return 1;
 
-  const contains = a.includes(b) || b.includes(a) ? 0.8 : 0;
+  // Containment scaled by how much of the longer name is actually shared.
+  // A flat 0.8 meant ANY substring cleared the floor, so a one-character guess
+  // got a confident answer: "a" -> "affordability", "s" -> "set_profile". That
+  // is precisely the confidently-wrong suggestion this file exists to avoid.
+  const contains =
+    a.includes(b) || b.includes(a)
+      ? 0.9 * (Math.min(a.length, b.length) / Math.max(a.length, b.length))
+      : 0;
 
   const ta = tokens(a);
   const tb = tokens(b);

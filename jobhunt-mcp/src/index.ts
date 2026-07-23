@@ -192,7 +192,7 @@ server.registerTool(
     try {
       const wanted = required ?? posting_skills;
       if (!wanted || wanted.length === 0) {
-        return textResult(`BOTTOM LINE: no posting skills given — pass "required" as a list of the skills/keywords the job posting asks for.`);
+        return { ...textResult(`BOTTOM LINE: no posting skills given — pass "required" as a list of the skills/keywords the job posting asks for.`), isError: true };
       }
       const skills = have ?? candidate_skills ?? (await profileStore.getProfile()).skills ?? [];
       return textResult(vetting.matchJob(wanted, skills));

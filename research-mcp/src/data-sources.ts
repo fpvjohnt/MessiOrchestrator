@@ -63,7 +63,13 @@ async function getJson(url: string, userAgent: string): Promise<any> {
     headers: { "User-Agent": userAgent, Accept: "application/json" },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status} from ${host}`);
+  if (!res.ok) {
+    // Cancel the body. Leaving it undrained holds the connection open in
+    // undici until it times out — extract.ts already does this on its redirect
+    // path; this one was missed.
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`HTTP ${res.status} from ${host}`);
+  }
   return JSON.parse(await readCapped(res, host));
 }
 
@@ -78,21 +84,33 @@ const TICKER_RE = /^[A-Za-z0-9.\-]{1,12}$/;
 // The ticker->CIK map is one 220KB file covering ~10,400 companies and it
 // changes rarely, so it is fetched once per process rather than per lookup.
 // Without this, every filings call pays for the whole file.
-let tickerCache: Map<string, { cik: string; title: string }> | null = null;
+// Caches the PENDING promise, not the resolved map — the same fix
+// client-manager.ts already carries. Caching only the result meant N concurrent
+// sec_filings calls each pulled the full 220KB file before any of them stored
+// it.
+let tickerCache: Promise<Map<string, { cik: string; title: string }>> | null = null;
 
-export async function loadTickerMap(): Promise<Map<string, { cik: string; title: string }>> {
+export function loadTickerMap(): Promise<Map<string, { cik: string; title: string }>> {
   if (tickerCache) return tickerCache;
-  const raw = await getJson("https://www.sec.gov/files/company_tickers.json", SEC_USER_AGENT);
-  const map = new Map<string, { cik: string; title: string }>();
-  for (const entry of Object.values(raw as Record<string, { cik_str: number; ticker: string; title: string }>)) {
-    if (!entry?.ticker) continue;
-    // CIK is zero-padded to 10 digits in the submissions path — the raw JSON
-    // stores it as an unpadded number, which is the most common way this
-    // endpoint gets called wrong.
-    map.set(entry.ticker.toUpperCase(), { cik: String(entry.cik_str).padStart(10, "0"), title: entry.title });
-  }
-  tickerCache = map;
-  return map;
+  const pending = (async () => {
+    const raw = await getJson("https://www.sec.gov/files/company_tickers.json", SEC_USER_AGENT);
+    const map = new Map<string, { cik: string; title: string }>();
+    for (const entry of Object.values(raw as Record<string, { cik_str: number; ticker: string; title: string }>)) {
+      if (!entry?.ticker) continue;
+      // CIK is zero-padded to 10 digits in the submissions path — the raw JSON
+      // stores it as an unpadded number, which is the most common way this
+      // endpoint gets called wrong.
+      map.set(entry.ticker.toUpperCase(), { cik: String(entry.cik_str).padStart(10, "0"), title: entry.title });
+    }
+    return map;
+  })();
+  tickerCache = pending;
+  // A failed fetch must not be cached forever, or one transient error poisons
+  // every later lookup for the life of the process.
+  pending.catch(() => {
+    if (tickerCache === pending) tickerCache = null;
+  });
+  return pending;
 }
 
 export interface SecFilingsOptions {
@@ -124,8 +142,14 @@ export async function secFilings(opts: SecFilingsOptions): Promise<string> {
     return `BOTTOM LINE: EDGAR has no recent filings listed for ${hit.title} (CIK ${hit.cik}).`;
   }
 
+  // The columnar arrays are indexed in lockstep, so a short one would render
+  // `undefined` into a URL rather than failing. Bound the loop by the SHORTEST
+  // array actually used.
+  const columns = [recent.form, recent.filingDate, recent.accessionNumber].filter(Array.isArray);
+  const rowCount = Math.min(...columns.map((c: unknown[]) => c.length));
+
   const rows: string[] = [];
-  for (let i = 0; i < recent.form.length && rows.length < limit; i++) {
+  for (let i = 0; i < rowCount && rows.length < limit; i++) {
     const form = recent.form[i];
     if (wantForms.length && !wantForms.includes(String(form).toUpperCase())) continue;
     const accession = String(recent.accessionNumber[i] ?? "").replace(/-/g, "");

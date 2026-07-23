@@ -79,17 +79,40 @@ export function createProvider({ passphrase, issuer, log = () => {} }) {
     renameSync(tmp, STATE_FILE);
   }
 
+  // A record with NO expiresAt was immortal: `undefined <= now` is false, so it
+  // never swept. 25 of 33 stored refresh tokens were in that state — harmless
+  // as credentials (they also predate passphraseVersion, so they're rejected on
+  // use) but they never left the file. Treat a missing expiry as expired: a
+  // token we cannot reason about is one we should not keep.
+  const isExpired = (rec, now) => typeof rec?.expiresAt !== "number" || rec.expiresAt <= now;
+
   function sweep() {
     const now = Date.now();
     let dirty = false;
     for (const [key, rec] of state.accessTokens) {
-      if (rec.expiresAt <= now) { state.accessTokens.delete(key); dirty = true; }
+      if (isExpired(rec, now)) { state.accessTokens.delete(key); dirty = true; }
     }
     for (const [key, rec] of state.refreshTokens) {
-      if (rec.expiresAt <= now) { state.refreshTokens.delete(key); dirty = true; }
+      if (isExpired(rec, now)) { state.refreshTokens.delete(key); dirty = true; }
     }
     for (const [key, rec] of codes) {
-      if (rec.expiresAt <= now) codes.delete(key);
+      if (isExpired(rec, now)) codes.delete(key);
+    }
+    // Dynamically-registered clients were never swept at all — one record
+    // accumulated per connector re-registration (32 of them) with no expiry
+    // field to sweep on. Drop a client once it holds no live token and its
+    // registration is older than a day; a real client re-registers in a round
+    // trip, so the cost of being wrong is one extra handshake.
+    const CLIENT_TTL_MS = 24 * 60 * 60 * 1000;
+    const liveClients = new Set();
+    for (const rec of state.accessTokens.values()) if (rec?.clientId) liveClients.add(rec.clientId);
+    for (const rec of state.refreshTokens.values()) if (rec?.clientId) liveClients.add(rec.clientId);
+    for (const [id, rec] of state.clients ?? []) {
+      if (liveClients.has(id)) continue;
+      const issuedMs = (rec?.client_id_issued_at ?? 0) * 1000;
+      if (issuedMs && now - issuedMs < CLIENT_TTL_MS) continue;
+      state.clients.delete(id);
+      dirty = true;
     }
     if (dirty) persist();
   }

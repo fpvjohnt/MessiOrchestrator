@@ -11,7 +11,36 @@ import { describeUnknownTool } from "./tool-suggest.js";
 const connections = new Map<string, Promise<Client>>();
 const CONNECT_TIMEOUT_MS = 15_000;
 
+// Connections were never released. Measured: a cold connect costs ~183ms and
+// each live asset holds ~80MB, so an orchestrator that touches all 22 keeps
+// ~1.75GB for the lifetime of Claude Desktop — and that is exactly the orphan
+// pile OPERATIONS.md warns about. Ten minutes idle buys back nearly all of it
+// for one 183ms respawn, which is 13% of a single median model round-trip.
+const IDLE_DISCONNECT_MS = 10 * 60_000;
+const lastUsed = new Map<string, number>();
+let idleTimer: NodeJS.Timeout | undefined;
+
+function touch(name: string): void {
+  lastUsed.set(name, Date.now());
+  if (idleTimer) return;
+  // unref so this timer never keeps the process alive on its own.
+  idleTimer = setInterval(() => {
+    const cutoff = Date.now() - IDLE_DISCONNECT_MS;
+    for (const [name, when] of [...lastUsed]) {
+      if (when > cutoff) continue;
+      lastUsed.delete(name);
+      void disconnect(name);
+    }
+    if (lastUsed.size === 0 && idleTimer) {
+      clearInterval(idleTimer);
+      idleTimer = undefined;
+    }
+  }, 60_000);
+  idleTimer.unref?.();
+}
+
 function connect(asset: AssetConfig): Promise<Client> {
+  touch(asset.name);
   const existing = connections.get(asset.name);
   if (existing) return existing;
 
@@ -35,7 +64,15 @@ function connect(asset: AssetConfig): Promise<Client> {
 async function establishConnection(asset: AssetConfig, evict: () => void): Promise<Client> {
   const client = new Client({ name: `orchestrator-to-${asset.name}`, version: "0.1.0" });
   client.onclose = evict;
-  client.onerror = evict;
+  // onerror is NOT the same as onclose. On close the transport is already gone
+  // and dropping the map entry is the whole job; on ERROR the child process is
+  // still alive, so evicting without closing orphans it — the next call spawns
+  // a replacement and the old one lingers at ~80MB. That is the shape of the
+  // leak that once put 37 node processes and 2.46GB on this machine.
+  client.onerror = () => {
+    evict();
+    void client.close().catch(() => {});
+  };
 
   const connectPromise = (async () => {
     if (asset.transport === "stdio") {

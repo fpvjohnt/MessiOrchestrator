@@ -94,7 +94,7 @@ server.registerTool(
     try {
       const query = rawQuery ?? question;
       if (!query) {
-        return textResult(`BOTTOM LINE: nothing to search — pass "query" (this tool's parameter) with the text to search for.`);
+        return { ...textResult(`BOTTOM LINE: nothing to search — pass "query" (this tool's parameter) with the text to search for.`), isError: true };
       }
       const { results, providerErrors } = await multiSearch(query, providers, max_per_provider);
       if (results.length === 0) {
@@ -202,7 +202,7 @@ server.registerTool(
     try {
       const question = rawQuestion ?? query;
       if (!question) {
-        return textResult(`BOTTOM LINE: nothing to research — pass "question" (this tool's parameter) with what you want researched.`);
+        return { ...textResult(`BOTTOM LINE: nothing to research — pass "question" (this tool's parameter) with what you want researched.`), isError: true };
       }
       const dossier = await buildDossier(question, providers, fetch_top, excerpt_chars);
 

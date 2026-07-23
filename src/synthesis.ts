@@ -7,14 +7,44 @@ import type { Case, CaseTaskLog } from "./types.js";
 // sources they cite and any calls that failed, collapsing a long multi-asset
 // case log into one digest the caller can turn into a single answer.
 
+/**
+ * Did this call FAIL? An asset can fail two different ways and only one of them
+ * was ever counted.
+ *
+ * `entry.error` is set when the orchestrator's own call threw. But an MCP tool
+ * that rejects its arguments, or is not found, returns a normal result with
+ * `isError: true` — and every consumer in this repo keyed off `entry.error`
+ * alone. Measured against the real case log: 6 entries carry `error`, and 50
+ * carry `result.isError`. Nine failures in ten were invisible to synthesis, to
+ * the overseer's error analyzer, and to the audit report.
+ *
+ * Worse than a wrong count: `resultText` returned the error payload as if it
+ * were content, so a hard failure ("Tool calculate_dti not found") rendered as
+ * "(no headline extracted — returned data without a BOTTOM LINE, e.g. a
+ * dossier)". The digest actively misdescribed a broken call as a verbose one.
+ */
+export function isFailed(entry: CaseTaskLog): boolean {
+  if (entry.error) return true;
+  const r = entry.result as unknown;
+  return !!(r && typeof r === "object" && (r as { isError?: unknown }).isError === true);
+}
+
 function resultText(entry: CaseTaskLog): string {
-  if (entry.error) return "";
+  if (isFailed(entry)) return "";
   const r = entry.result as unknown;
   if (typeof r === "string") return r;
   if (r && typeof r === "object") {
     const o = r as Record<string, unknown>;
+    // Scan EVERY text block, not just the first. An asset that returns a
+    // leading non-text block otherwise loses its headline entirely.
     const content = o.content as Array<{ text?: string }> | undefined;
-    if (Array.isArray(content) && content[0]?.text) return content[0].text;
+    if (Array.isArray(content)) {
+      const joined = content
+        .map((b) => (typeof b?.text === "string" ? b.text : ""))
+        .filter(Boolean)
+        .join("\n");
+      if (joined) return joined;
+    }
     if (typeof o.preview === "string") return o.preview;
   }
   return "";
@@ -50,7 +80,7 @@ export function synthesizeCase(c: Case): string {
   for (const e of c.log) {
     const a = byAsset.get(e.asset) ?? { calls: 0, errors: 0, bottoms: [] };
     a.calls += 1;
-    if (e.error) {
+    if (isFailed(e)) {
       a.errors += 1;
       errorCount += 1;
     } else {
@@ -97,7 +127,10 @@ export function synthesizeCase(c: Case): string {
   const flags: string[] = [];
   if (errorCount) flags.push(`${errorCount} call(s) errored — the synthesis may be missing an asset's input.`);
   if (byAsset.size === 1) flags.push(`Only one asset contributed — this is a single-source answer, not a cross-checked one.`);
-  if (!sources.size && [...byAsset.keys()].some((k) => k !== "research")) flags.push(`No sources cited — nothing here was verified against an external source.`);
+  // The `some(k => k !== "research")` guard meant a research-ONLY case was the
+  // single case that never got this warning — precisely when the one asset that
+  // can cite sources found none, which is when the caller most needs telling.
+  if (!sources.size) flags.push(`No sources cited — nothing here was verified against an external source.`);
   out.push(``, `FLAGS:`, ...(flags.length ? flags.map((f) => `  • ${f}`) : ["  • none — multiple assets contributed and calls succeeded."]));
 
   out.push(``, `This is a structured digest for writing ONE merged answer — check the headlines for agreement/conflict before combining them.`);

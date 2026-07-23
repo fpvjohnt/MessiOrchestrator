@@ -444,13 +444,18 @@ server.registerTool(
       if (assetConfig.status !== "active") throw new Error(`Asset "${asset}" is retired.`);
 
       const result = await clientManager.callAssetTool(assetConfig, tool, toolArgs);
+      // Stamp the duration BEFORE the store write. It used to be evaluated
+      // inside the object literal — i.e. after appendLog had already begun —
+      // which folded ~11ms of load+fsync+rename into every "asset latency"
+      // number the overseer reports. Measure the asset, not the bookkeeping.
+      const durationMs = Date.now() - startedMs;
       await caseStore.appendLog(case_id, {
         asset,
         tool,
         arguments: capForLog(toolArgs ?? {}),
         result: capForLog(result),
         timestamp,
-        durationMs: Date.now() - startedMs,
+        durationMs,
       });
       // Forward the asset's own content blocks directly instead of
       // JSON-stringifying the whole CallToolResult, so non-text content
@@ -467,7 +472,18 @@ server.registerTool(
       const message = err instanceof Error ? err.message : String(err);
       await caseStore
         .appendLog(case_id, { asset, tool, arguments: capForLog(toolArgs ?? {}), error: message, timestamp, durationMs: Date.now() - startedMs })
-        .catch(() => {});
+        // An empty catch here hid a real failure mode: if cases.json is locked
+        // or unparseable, calls silently stop being recorded and every later
+        // report — case_report, synthesize_case, the whole overseer — quietly
+        // describes less than actually happened. It still must not mask the
+        // original error, so it is reported on stderr rather than thrown.
+        .catch((logErr) => {
+          console.error(
+            `[task_asset] FAILED TO LOG ${asset}.${tool} on case ${case_id}: ${
+              logErr instanceof Error ? logErr.message : String(logErr)
+            } — the case record is now incomplete.`
+          );
+        });
       return errorResult(err);
     }
   }
