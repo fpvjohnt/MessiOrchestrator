@@ -3,30 +3,18 @@
     "name": "research",
     "description": "Multi-provider web research: searches DuckDuckGo/Wikipedia (plus Brave/Tavily/Google when keys are set), fetches pages, builds solution-oriented research dossiers with corroborated sources.",
     "tags": [
-      "research",
-      "search",
-      "web",
-      "information",
-      "question",
-      "investigate",
-      "source",
-      "truth",
-      "docs",
-      "documentation",
-      "find",
-      "lookup",
-      "answer",
-      "solution"
+      "research"
     ],
     "transport": "stdio",
     "command": "node",
     "args": [
       "research-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "status": "active",
     "registeredAt": "2026-07-06T00:01:42.201Z",
-    "fallback": true
+    "fallback": true,
+    "env": {}
   },
   {
     "name": "homebuyer",
@@ -48,7 +36,6 @@
       "escrow",
       "inspection",
       "appraisal",
-      "california",
       "murrieta",
       "temecula",
       "riverside",
@@ -67,10 +54,11 @@
     "args": [
       "homebuyer-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-06T01:01:05.122Z"
+    "registeredAt": "2026-07-06T01:01:05.122Z",
+    "env": {}
   },
   {
     "name": "nestegg",
@@ -117,10 +105,11 @@
     "args": [
       "nestegg-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-06T02:02:31.946Z"
+    "registeredAt": "2026-07-06T02:02:31.946Z",
+    "env": {}
   },
   {
     "name": "lawguide",
@@ -169,10 +158,11 @@
     "args": [
       "lawguide-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-06T03:13:08.867Z"
+    "registeredAt": "2026-07-06T03:13:08.867Z",
+    "env": {}
   },
   {
     "name": "jobhunt",
@@ -208,10 +198,11 @@
     "args": [
       "jobhunt-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-06T03:39:54.263Z"
+    "registeredAt": "2026-07-06T03:39:54.263Z",
+    "env": {}
   },
   {
     "name": "polymath",
@@ -235,13 +226,11 @@
       "platform",
       "network",
       "gpu",
-      "security",
       "cybersecurity",
       "forensics",
       "trust",
       "safety",
       "support",
-      "systems",
       "technical",
       "integration",
       "project",
@@ -254,10 +243,7 @@
       "polymath",
       "troubleshoot",
       "windows",
-      "error",
       "crash",
-      "broken",
-      "fix",
       "dashboard",
       "sql",
       "pitch",
@@ -277,13 +263,11 @@
       "inference",
       "enablement",
       "claude",
-      "research",
       "iam",
       "identity",
       "access",
       "sso",
       "detection",
-      "response",
       "incident",
       "redteam",
       "jailbreak",
@@ -302,7 +286,6 @@
       "devex",
       "staff",
       "frontend",
-      "web",
       "css",
       "html",
       "react",
@@ -327,10 +310,11 @@
     "args": [
       "polymath-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-06T04:20:00.896Z"
+    "registeredAt": "2026-07-06T04:20:00.896Z",
+    "env": {}
   },
   {
     "name": "healthguide",
@@ -389,10 +373,11 @@
     "args": [
       "healthguide-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-06T05:53:02.234Z"
+    "registeredAt": "2026-07-06T05:53:02.234Z",
+    "env": {}
   },
   {
     "name": "overseer",
@@ -410,18 +395,18 @@
       "debug",
       "trace",
       "case",
-      "routing",
-      "errors"
+      "routing"
     ],
     "transport": "stdio",
     "command": "node",
     "args": [
       "overseer-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T01:14:44.819Z"
+    "registeredAt": "2026-07-07T01:14:44.819Z",
+    "env": {}
   },
   {
     "name": "curiosity",
@@ -490,10 +475,11 @@
     "args": [
       "curiosity-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T04:50:07.246Z"
+    "registeredAt": "2026-07-07T04:50:07.246Z",
+    "env": {}
   },
   {
     "name": "education",
@@ -549,10 +535,11 @@
     "args": [
       "education-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T15:43:05.176Z"
+    "registeredAt": "2026-07-07T15:43:05.176Z",
+    "env": {}
   },
   {
     "name": "communication",
@@ -599,10 +586,11 @@
     "args": [
       "communication-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T15:52:05.758Z"
+    "registeredAt": "2026-07-07T15:52:05.758Z",
+    "env": {}
   },
   {
     "name": "sports",
@@ -644,10 +632,11 @@
     "args": [
       "sports-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T16:02:22.564Z"
+    "registeredAt": "2026-07-07T16:02:22.564Z",
+    "env": {}
   },
   {
     "name": "government",
@@ -690,10 +679,11 @@
     "args": [
       "government-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T16:09:05.278Z"
+    "registeredAt": "2026-07-07T16:09:05.278Z",
+    "env": {}
   },
   {
     "name": "linguistics",
@@ -738,10 +728,11 @@
     "args": [
       "linguistics-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T16:14:40.273Z"
+    "registeredAt": "2026-07-07T16:14:40.273Z",
+    "env": {}
   },
   {
     "name": "faiths",
@@ -798,10 +789,11 @@
     "args": [
       "faiths-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T16:16:52.531Z"
+    "registeredAt": "2026-07-07T16:16:52.531Z",
+    "env": {}
   },
   {
     "name": "loop",
@@ -849,10 +841,11 @@
     "args": [
       "loop-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-07T16:30:00.000Z"
+    "registeredAt": "2026-07-07T16:30:00.000Z",
+    "env": {}
   },
   {
     "name": "openai",
@@ -893,10 +886,11 @@
     "args": [
       "openai-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-16T17:35:41.885Z"
+    "registeredAt": "2026-07-16T17:35:41.885Z",
+    "env": {}
   },
   {
     "name": "aiforge",
@@ -942,10 +936,11 @@
     "args": [
       "aiforge-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-17T00:00:00.000Z"
+    "registeredAt": "2026-07-17T00:00:00.000Z",
+    "env": {}
   },
   {
     "name": "gitforge",
@@ -980,10 +975,11 @@
     "args": [
       "gitforge-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-17T00:00:00.000Z"
+    "registeredAt": "2026-07-17T00:00:00.000Z",
+    "env": {}
   },
   {
     "name": "promptcraft",
@@ -1013,10 +1009,11 @@
     "args": [
       "promptcraft-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-17T00:00:00.000Z"
+    "registeredAt": "2026-07-17T00:00:00.000Z",
+    "env": {}
   },
   {
     "name": "apiforge",
@@ -1053,9 +1050,10 @@
     "args": [
       "apiforge-mcp/dist/index.js"
     ],
-    "cwd": "D:/John MCP",
+    "cwd": "/path/to/John MCP",
     "fallback": false,
     "status": "active",
-    "registeredAt": "2026-07-17T00:00:00.000Z"
+    "registeredAt": "2026-07-17T00:00:00.000Z",
+    "env": {}
   }
 ]

@@ -38,6 +38,30 @@ function stem(w: string): string {
   return w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
 }
 
+// The registry carries 67 closed-compound tags — blackhole, bodylanguage,
+// custominstructions, responsesapi, mergeconflict, workvisa — that tokenize()
+// can never produce, because it splits the query on every non-alphanumeric.
+// "why do black holes form" yields [black, hole] and could not match
+// "blackhole" no matter how the thresholds were tuned; two of the three
+// long-standing golden misses were this, not a routing ceiling.
+//
+// Joining adjacent tokens closes it without a lookup table, so it scales with
+// the language instead of with the asset count — the alternative was one
+// synonym entry per compound, forever. Joins run over RAW tokens so a compound
+// split by a stopword still forms, and the >= 6 floor keeps short accidental
+// pairs from colliding with real short tags.
+function compoundJoins(rawTokens: string[]): string[] {
+  const joins: string[] = [];
+  for (let i = 0; i < rawTokens.length; i++) {
+    for (const n of [2, 3]) {
+      if (i + n > rawTokens.length) break;
+      const joined = rawTokens.slice(i, i + n).join("");
+      if (joined.length >= 6) joins.push(stem(joined));
+    }
+  }
+  return joins;
+}
+
 // Length >= 2 drops apostrophe fragments ("what's" -> "s", "case's" -> "s")
 // that were being counted as matches; 2 is the floor so real short tags like
 // "ai"/"bi" still route.
@@ -64,6 +88,7 @@ export function matchAssets(objective: string, assets: AssetConfig[]): AssetMatc
   // canonical). "cops took me into custody" gains "police"; the asset's
   // 'police' tag then matches.
   const objectiveTokens = expandConcepts(contentTokens(objective));
+  for (const joined of compoundJoins(tokenize(objective))) objectiveTokens.add(joined);
   const candidates = assets.filter((a) => a.status === "active");
 
   const scored: AssetMatch[] = candidates.map((asset) => {
@@ -122,11 +147,22 @@ export interface RoutingThresholds {
   // (1-2) is filtered out.
   floor: number;
   // A secondary asset joins only if its score is at least this fraction of the
-  // top match's — 0.5 means "at least half as strong as the leader".
+  // top match's — 0.6 means "at least three-fifths as strong as the leader".
   secondaryRatio: number;
 }
 
-export const DEFAULT_THRESHOLDS: RoutingThresholds = { floor: 3, secondaryRatio: 0.5 };
+// 0.5 was set when the registry was much smaller and was never defended in
+// code or docs; at 21 assets it let a half-strength match ride along on most
+// questions. Tightening to 0.6 costs no primary hits and no paraphrase
+// accuracy, and buys back a large share of the noise. Note this raises the bar
+// — AGENTS.md forbids LOWERING a threshold to make routing look better.
+// 0.7 was measured too: it buys 3 more clean-hits (90 vs 87) at no cost to
+// primary-hit, and golden.mjs's sweep therefore recommends it. It also turns
+// one paraphrase HARD miss into two — a rephrasing routed to the wrong
+// specialist. A harmless extra asset is not worth a confidently wrong one, so
+// 0.6 stands. This is the tradeoff the sweep cannot see; see the caveat it
+// prints alongside its recommendation.
+export const DEFAULT_THRESHOLDS: RoutingThresholds = { floor: 3, secondaryRatio: 0.6 };
 
 /**
  * The full auto-routing decision for an objective, as a pure function so it

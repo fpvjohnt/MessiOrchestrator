@@ -519,6 +519,33 @@ for (const [name, out] of START_HERE) {
   check(`${name} start_here renders a BOTTOM LINE`, typeof out === "string" && out.includes("BOTTOM LINE") && out.length > 80, `len ${out?.length ?? "n/a"}`);
 }
 
+// ── 17. registry.example.json is a TEMPLATE, not a copy of the live registry ──
+// data/registry.json is gitignored because AssetConfig.env is the per-asset
+// API-key channel and this repo is public. The example is the TRACKED file, so
+// it is the one that can actually leak. It used to be a byte-identical
+// snapshot of the live registry — safe only because every env happened to be
+// empty at the time. These assertions make that structural rather than lucky.
+{
+  const example = JSON.parse(await readFile(new URL("./data/registry.example.json", import.meta.url), "utf-8"));
+  const withEnv = example.filter((a) => a.env && Object.keys(a.env).length > 0);
+  check(
+    "registry.example.json carries no env values",
+    withEnv.length === 0,
+    withEnv.map((a) => a.name).join(", ") || "none"
+  );
+  const absolutePaths = JSON.stringify(example).match(/[A-Za-z]:[\\/]/g) ?? [];
+  check(
+    "registry.example.json has no machine-absolute paths",
+    absolutePaths.length === 0,
+    `${absolutePaths.length} found`
+  );
+  check(
+    "registry.example.json covers every live asset",
+    example.length === registry.length,
+    `example ${example.length} vs live ${registry.length}`
+  );
+}
+
 // ── Report ─────────────────────────────────────────────────────────────────
 const total = passed + failures.length;
 console.log(`\nREGRESSION: ${passed}/${total} checks passed`);
