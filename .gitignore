@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.log
 
+# Incremental-build caches (tsc --incremental). Land at package roots, not dist/.
+*.tsbuildinfo
+
 # Transient cross-process advisory locks (src/file-lock.ts) around data/*.json
 # writes — created and removed at runtime, never meant to persist.
 *.lock
