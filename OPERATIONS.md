@@ -225,6 +225,10 @@ gates; PLAYBOOK.md §4 covers tag hygiene.
    command in that file. The bridge refuses to start without it.
 4. Optionally `cp research-mcp/.env.example research-mcp/.env` and add search
    API keys. All optional; research works keyless via DuckDuckGo and Wikipedia.
+   Set `RESEARCH_CONTACT_EMAIL` there too — it is **not** a secret, it is the
+   contact address the SEC requires in the User-Agent of every request to
+   `data.sec.gov`. `sec_filings` works without it but warns in every response,
+   and the SEC may block traffic that omits it.
 5. `data/registry.json` is recreated from `data/registry.example.json` on first
    run. It is gitignored, because `AssetConfig.env` is a per-asset secret
    channel and this repo is public.

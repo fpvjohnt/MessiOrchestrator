@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ALL_PROVIDERS } from "./providers.js";
 import { fetchPage } from "./extract.js";
 import { multiSearch, buildDossier } from "./research.js";
+import { secFilings, kalshiMarkets } from "./data-sources.js";
 
 const server = new McpServer({
   name: "research",
@@ -236,6 +237,65 @@ server.registerTool(
         .join("\n");
 
       return textResult(report);
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Structured data sources. The tools above return prose to be read; these
+// return facts to be computed on. Both sources are keyless, so they add no
+// secret-management burden and cannot leak a credential.
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "sec_filings",
+  {
+    title: "SEC EDGAR Filings for a Company",
+    description:
+      "PRIMARY SOURCE company filings from SEC EDGAR — free, official, no API key. Give a ticker (AAPL, ALK) and get the most recent " +
+      "filings with direct document URLs: 10-K (annual, audited), 10-Q (quarterly), 8-K (material events), 4 (insider buys and sells), " +
+      "DEF 14A (proxy/compensation). Optionally filter by form. Pair with fetch_page to read a filing's text. This is what the nestegg " +
+      "asset's analyze_asset expects research to fetch — the company's own words, not commentary about them.",
+    inputSchema: {
+      ticker: z.string().min(1).max(12).describe("Stock ticker, e.g. AAPL."),
+      forms: z
+        .array(z.string().max(12))
+        .max(10)
+        .optional()
+        .describe('Restrict to forms, e.g. ["10-K","8-K"]. Omit for all.'),
+      limit: z.number().int().min(1).max(100).optional().describe("How many filings to list. Default 15."),
+    },
+  },
+  async ({ ticker, forms, limit }) => {
+    try {
+      return textResult(await secFilings({ ticker, forms, limit }));
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.registerTool(
+  "kalshi_markets",
+  {
+    title: "Live Event-Contract Prices from Kalshi",
+    description:
+      "LIVE market-implied probabilities from Kalshi's public API — free, no API key. Returns each market's bid/ask, the MID as an " +
+      "implied probability (the honest read — the last trade can be stale), the spread, the close time, and the settlement rule. Filter " +
+      "by a series ticker (cheap and precise, e.g. KXHIGHNY) or a word in the title (broad, and Kalshi's titles are heavily abbreviated " +
+      "so it often matches nothing). Feed a price into the kalshi asset's price_check for the breakeven-after-fees answer.",
+    inputSchema: {
+      query: z.string().max(200).optional().describe("Filter market titles by a word. Use a single distinctive word."),
+      series: z.string().max(64).optional().describe('Series ticker, e.g. "KXHIGHNY". Far more precise than a title search.'),
+      limit: z.number().int().min(1).max(50).optional().describe("How many markets. Default 10."),
+      status: z.enum(["open", "closed", "settled"]).optional().describe("Default open."),
+    },
+  },
+  async ({ query, series, limit, status }) => {
+    try {
+      return textResult(await kalshiMarkets({ query, series, limit, status }));
     } catch (err) {
       return errorResult(err);
     }

@@ -48,6 +48,7 @@ import { TOPICS as KA_TOPICS, resolveTopic as kaResolve, explainTopic as kaExpla
 import { readMarket as kaRead, mythVsReality as kaMyth } from "./kalshi-mcp/dist/toolkit.js";
 import { priceCheck as kaPriceCheck, computePriceCheck as kaCompute, orderFee as kaOrderFee } from "./kalshi-mcp/dist/math.js";
 import { checkKalshi as kaCheck, kalshiVerdict as kaVerdict } from "./kalshi-mcp/dist/verify.js";
+import { dollarsToCents, secFilings, kalshiMarkets } from "./research-mcp/dist/data-sources.js";
 import { howTo as apHowTo, debug as apDebug, mythVsReality as apMyth } from "./apiforge-mcp/dist/toolkit.js";
 import { SUBJECTS, resolveSubject } from "./education-mcp/dist/subjects.js";
 import { AREAS, resolveArea } from "./communication-mcp/dist/areas.js";
@@ -613,6 +614,31 @@ check(
   "kalshi: probability accepts 0-1 and 0-100 alike",
   kaCompute({ your_probability: 0.55, market_price: 50 }).probability === kaCompute({ your_probability: 55, market_price: 50 }).probability
 );
+
+// ── 14c. Structured data sources (sec_filings, kalshi_markets) ──────────────
+// This suite makes no network calls, so what is tested here is everything that
+// happens BEFORE the fetch — validation, and the price conversion that the
+// published API guides get wrong.
+{
+  // Kalshi returns prices as DOLLAR STRINGS ("0.2500"), not the integer cents
+  // that older docs and every third-party guide describe. Probing the live
+  // endpoint is what caught it; this pins the conversion so a future edit
+  // can't silently reintroduce a 100x error in an implied probability.
+  check("data: kalshi dollar string → cents", dollarsToCents("0.2500") === 25);
+  check("data: kalshi handles a whole dollar", dollarsToCents("1.0000") === 100);
+  check("data: kalshi handles zero", dollarsToCents("0.0000") === 0);
+  check("data: kalshi missing price → undefined, not 0", dollarsToCents(undefined) === undefined && dollarsToCents("") === undefined);
+  check("data: kalshi non-numeric → undefined", dollarsToCents("n/a") === undefined);
+
+  // Validation must reject BEFORE any request goes out — these assertions
+  // double as proof the bad-input path is network-free.
+  const badTicker = await secFilings({ ticker: "not a ticker!!" });
+  check("data: sec rejects a malformed ticker without fetching", badTicker.includes("not a valid ticker"));
+  check("data: sec rejection still carries a BOTTOM LINE", /^BOTTOM LINE/m.test(badTicker));
+  const badSeries = await kalshiMarkets({ series: "bad series!!" });
+  check("data: kalshi rejects a malformed series without fetching", badSeries.includes("not a valid series"));
+  check("data: kalshi rejection still carries a BOTTOM LINE", /^BOTTOM LINE/m.test(badSeries));
+}
 
 // ── 15. Reference-store logic paths (curiosity, education, government) ────────
 // The previously-untested trio: get_reference / list_stale_references /
