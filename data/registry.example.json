@@ -87,7 +87,6 @@
       "options",
       "calls",
       "puts",
-      "kalshi",
       "gold",
       "silver",
       "wine",
@@ -625,7 +624,8 @@
       "tryout",
       "player",
       "players",
-      "coach"
+      "coach",
+      "odds"
     ],
     "transport": "stdio",
     "command": "node",
@@ -1054,6 +1054,40 @@
     "fallback": false,
     "status": "active",
     "registeredAt": "2026-07-17T00:00:00.000Z",
+    "env": {}
+  },
+  {
+    "name": "kalshi",
+    "description": "Event contracts and prediction markets (Kalshi, Polymarket): binary one-dollar settlement, the series/event/market structure, order book, maker and taker fees, implied probability, breakeven after fees, position sizing, CFTC regulation and the unsettled state-law question, sportsbook comparison, taxes, and the free public market-data API. Holds no prices, no fee numbers, and no legal status — those move and route through research.",
+    "tags": [
+      "kalshi",
+      "predictionmarket",
+      "predictionmarkets",
+      "eventcontract",
+      "eventcontracts",
+      "polymarket",
+      "predictit",
+      "binarycontract",
+      "impliedprobability",
+      "orderbook",
+      "breakeven",
+      "sportsbook",
+      "betting",
+      "wager",
+      "longshot",
+      "speculation",
+      "cftc",
+      "payout"
+    ],
+    "transport": "stdio",
+    "command": "node",
+    "args": [
+      "kalshi-mcp/dist/index.js"
+    ],
+    "cwd": "/path/to/John MCP",
+    "fallback": false,
+    "status": "active",
+    "registeredAt": "2026-07-23T00:00:00.000Z",
     "env": {}
   }
 ]

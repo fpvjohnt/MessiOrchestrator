@@ -155,4 +155,25 @@ export const GOLDEN = [
   { q: "why am I getting a 401 error from the API", expect: ["apiforge"] },
   { q: "how do I handle rate limiting and retries when calling an API", expect: ["apiforge"] },
   { q: "how do I consume a streaming SSE response from an AI API", expect: ["apiforge"] },
+
+  // kalshi (event contracts & prediction markets)
+  { q: "how do prediction markets actually work", expect: ["kalshi"] },
+  { q: "what is an event contract and how does it settle", expect: ["kalshi"] },
+  { q: "how much do the fees cost on an event contract", expect: ["kalshi"] },
+  // DOCUMENTED CEILING CASE — expected to MISS, and left in deliberately.
+  // Only prediction markets quote a contract in cents, so the intent is
+  // unambiguous to a human, but the query's one strong noun is "contract",
+  // which lawguide owns and kalshi may not claim (AGENTS.md). Tagging kalshi
+  // with "cents" was tried and measured: it captured "how many cents on the
+  // dollar will creditors take" (a debt question) and was reverted. A miss
+  // here is the honest number; making it pass would cost a real misroute.
+  { q: "is a contract trading at 90 cents nearly free money", expect: ["kalshi"], note: "CEILING: 'contract' belongs to lawguide; tagging 'cents' to fix this broke debt routing" },
+  { q: "how does kalshi compare to polymarket", expect: ["kalshi"] },
+  // BOUNDARY CASES against the neighbouring assets. Each of these words —
+  // betting, odds, market, contract, legal — belongs to someone else in another
+  // sense, and getting them wrong is how a new asset quietly degrades routing.
+  { q: "is betting on the election legal where I live", expect: ["kalshi"], alsoOk: ["lawguide"], note: "BOUNDARY: legality OF prediction markets is kalshi's subject; lawguide legitimately rides on 'legal'" },
+  { q: "what are the odds the Lakers win tonight", expect: ["sports"], alsoOk: ["research"], note: "BOUNDARY: sports 'odds' must NOT reach kalshi — this is why the bare 'odds' tag was dropped" },
+  { q: "how should I invest my 401k for retirement", expect: ["nestegg"], note: "BOUNDARY: real investing stays with nestegg, not the speculation asset" },
+  { q: "how do I hedge my portfolio against a downturn", expect: ["nestegg"], note: "BOUNDARY: 'hedge' is portfolio vocabulary, deliberately not a kalshi tag" },
 ];

@@ -44,6 +44,10 @@ import { howTo as gfHowTo, debug as gfDebug, mythVsReality as gfMyth } from "./g
 import { TOPICS as PC_TOPICS, resolveTopic as pcResolve, explainTopic as pcExplain } from "./promptcraft-mcp/dist/topics.js";
 import { buildPrompt as pcBuild, improvePrompt as pcImprove, mythVsReality as pcMyth } from "./promptcraft-mcp/dist/toolkit.js";
 import { TOPICS as AP_TOPICS, resolveTopic as apResolve, explainTopic as apExplain } from "./apiforge-mcp/dist/topics.js";
+import { TOPICS as KA_TOPICS, resolveTopic as kaResolve, explainTopic as kaExplain, startHere as kaStart } from "./kalshi-mcp/dist/topics.js";
+import { readMarket as kaRead, mythVsReality as kaMyth } from "./kalshi-mcp/dist/toolkit.js";
+import { priceCheck as kaPriceCheck, computePriceCheck as kaCompute, orderFee as kaOrderFee } from "./kalshi-mcp/dist/math.js";
+import { checkKalshi as kaCheck, kalshiVerdict as kaVerdict } from "./kalshi-mcp/dist/verify.js";
 import { howTo as apHowTo, debug as apDebug, mythVsReality as apMyth } from "./apiforge-mcp/dist/toolkit.js";
 import { SUBJECTS, resolveSubject } from "./education-mcp/dist/subjects.js";
 import { AREAS, resolveArea } from "./communication-mcp/dist/areas.js";
@@ -548,6 +552,67 @@ check("apiforge: myth debunks 'a 200 means it worked'", apMyth().toLowerCase().i
 check("apiforge: 401 debug checks auth header + variable resolved", apDebug("401 unauthorized").toLowerCase().includes("authorization") || apDebug("401 unauthorized").toLowerCase().includes("apikey"));
 check("apiforge: testing AI endpoints = properties not exact text", apExplain("testing_ai_endpoints").toLowerCase().includes("propert") && apExplain("testing_ai_endpoints").toLowerCase().includes("not"));
 check("apiforge: unknown topic → honest 'not sure'", apExplain("underwater welding").toLowerCase().includes("not sure"));
+
+// ── 14b. kalshi (event contracts) — content + the arithmetic locked ──────────
+// The calculator is the reason this asset exists, so it is tested as MATH, not
+// as prose: the fee shape, the breakeven identity, and the case that decides
+// most real trades — a small edge near 50c being negative EV after fees.
+check("kalshi: 12 topics across 3 areas", Object.keys(KA_TOPICS).length === 12);
+check("kalshi: all 3 areas present", new Set(Object.values(KA_TOPICS).map((t) => t.area)).size === 3);
+check("kalshi: unknown topic → honest 'not sure'", kaExplain("underwater basket weaving").toLowerCase().includes("not sure"));
+check("kalshi: resolveTopic returns undefined for unknown", kaResolve("zzzz nonsense") === undefined);
+check("kalshi: every topic carries pitfalls + handoff", Object.values(KA_TOPICS).every((t) => t.pitfalls.length > 0 && t.handoff.length > 10));
+check("kalshi: check_kalshi refuses to answer from memory", kaCheck("fees").toLowerCase().includes("don't answer this from memory"));
+check("kalshi: verdict forbids undated fees", kaVerdict("fees", "found a schedule").toLowerCase().includes("without its date"));
+check("kalshi: verdict distinguishes settled law from an injunction", kaVerdict("legality", "third circuit ruled").toLowerCase().includes("preliminary"));
+check("kalshi: myth debunks '90c is free money'", kaMyth().toLowerCase().includes("90c") && kaMyth().toLowerCase().includes("nine wins"));
+check("kalshi: myth refuses 'regulated therefore legal for me'", kaMyth().toLowerCase().includes("not proof it's lawful"));
+check("kalshi: read_market puts the settlement rule before the price", kaRead("x").indexOf("SETTLEMENT RULE") < kaRead("x").indexOf("NOW COMPARE TO THE MARKET"));
+check("kalshi: scope line defers portfolios to nestegg", kaStart().toLowerCase().includes("nestegg"));
+
+// The fee is proportional to p*(1-p): largest at 50c, smaller at the extremes.
+// This SHAPE is the durable claim the whole fees_and_edge guidance rests on.
+{
+  const at50 = kaOrderFee(0.5, 100, 0.07, false);
+  const at90 = kaOrderFee(0.9, 100, 0.07, false);
+  const at10 = kaOrderFee(0.1, 100, 0.07, false);
+  check("kalshi: fee peaks at 50c", at50 > at90 && at50 > at10, `50c=${at50} 90c=${at90} 10c=${at10}`);
+  check("kalshi: fee is symmetric around 50c", Math.abs(at90 - at10) < 0.001, `90c=${at90} 10c=${at10}`);
+  check("kalshi: maker fee is cheaper than taker", kaOrderFee(0.5, 100, 0.07, true) < at50);
+}
+// Breakeven is the price PLUS the fee — the identity the whole tool exists to
+// make visible, because people compare their estimate to the price instead.
+{
+  const r = kaCompute({ your_probability: 55, market_price: 50, contracts: 100 });
+  check("kalshi: breakeven exceeds the market price", r.breakeven > r.price, `breakeven ${r.breakeven} vs price ${r.price}`);
+  check("kalshi: edge after fees is below edge before fees", r.edgeAfterFees < r.edgeBeforeFees);
+  check("kalshi: flags that it assumed a fee schedule", r.assumedFees === true);
+  const supplied = kaCompute({ your_probability: 55, market_price: 50, contracts: 100, fee_coefficient: 0.07 });
+  check("kalshi: does not claim assumption when fee supplied", supplied.assumedFees === false);
+}
+// The decisive real-world cases. These were written asserting that a 2-point
+// edge at 50c is negative EV — the calculator disagreed, and the calculator was
+// right: at ~1.75c per contract that edge clears breakeven by 0.25 of a point.
+// The asset's prose said "routinely negative" and had to be corrected to match.
+// Keeping the exact boundary pinned here is what stops that overclaim
+// reappearing in the content.
+{
+  const thin = kaCompute({ your_probability: 51, market_price: 50, contracts: 100 });
+  check("kalshi: a 1-point edge at 50c is NEGATIVE EV after fees", thin.worthIt === false, `edge after fees ${thin.edgeAfterFees}`);
+  const marginal = kaCompute({ your_probability: 52, market_price: 50, contracts: 100 });
+  check("kalshi: a 2-point edge at 50c only just clears breakeven", marginal.worthIt === true && marginal.edgeAfterFees < 0.005, `edge after fees ${marginal.edgeAfterFees}`);
+  const roundTrip = kaCompute({ your_probability: 52, market_price: 50, contracts: 100, exit: "early" });
+  check("kalshi: the SAME 2-point edge goes negative if you exit early", roundTrip.worthIt === false, `edge after fees ${roundTrip.edgeAfterFees}`);
+  const real = kaCompute({ your_probability: 70, market_price: 50, contracts: 100 });
+  check("kalshi: a 20-point edge at 50c does survive fees", real.worthIt === true, `edge after fees ${real.edgeAfterFees}`);
+  check("kalshi: price_check says plainly when the fee eats the edge", kaPriceCheck({ your_probability: 51, market_price: 50 }).toLowerCase().includes("fee eats the edge"));
+  check("kalshi: price_check surfaces the fee assumption", kaPriceCheck({ your_probability: 52, market_price: 50 }).includes("FEE ASSUMPTION"));
+}
+// Probability accepts 0-1 and 0-100 identically — a caller will use both.
+check(
+  "kalshi: probability accepts 0-1 and 0-100 alike",
+  kaCompute({ your_probability: 0.55, market_price: 50 }).probability === kaCompute({ your_probability: 55, market_price: 50 }).probability
+);
 
 // ── 15. Reference-store logic paths (curiosity, education, government) ────────
 // The previously-untested trio: get_reference / list_stale_references /

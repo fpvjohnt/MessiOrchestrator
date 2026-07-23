@@ -31,6 +31,7 @@ const PACKAGES = [
   "gitforge-mcp",
   "promptcraft-mcp",
   "apiforge-mcp",
+  "kalshi-mcp",
 ];
 
 function run(cmd, cwd) {

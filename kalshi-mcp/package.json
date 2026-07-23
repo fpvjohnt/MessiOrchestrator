@@ -1,0 +1,22 @@
+{
+  "name": "kalshi-mcp",
+  "version": "0.1.0",
+  "description": "Kalshi & event-contracts MCP: prediction markets as an instrument, honestly. How the instrument works (binary $1/$0 settlement, series/event/market hierarchy, order book & maker vs taker, settlement rules), the math that decides it (price as implied probability, fees against edge, sizing, where an edge could actually come from), and the context (CFTC regulation and the unsettled state-law fight, sportsbook/Polymarket comparison, taxes, the free public market-data API). explain_topic/read_market/price_check/myth_vs_reality plus check_kalshi -> kalshi_verdict. Holds NO prices, fee numbers, or legal status — all of that moves and is verified via research. Defers portfolios to nestegg and legal advice to lawguide. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "kalshi-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}
