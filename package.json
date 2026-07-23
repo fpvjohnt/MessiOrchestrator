@@ -17,6 +17,8 @@
     "test": "node regression.mjs",
     "golden": "node golden.mjs",
     "paraphrase": "node paraphrase.mjs",
+    "probe": "node probe.mjs",
+    "explain": "node explain.mjs",
     "setup": "node bootstrap.mjs",
     "bridge": "node bridge/server.mjs",
     "health": "node health-smoke.mjs",
@@ -24,7 +26,7 @@
     "archive": "node archive-cases.mjs",
     "backup": "node backup-data.mjs",
     "verify": "npm run build:all && npm test",
-    "check": "npm run verify && npm run golden && npm run paraphrase && npm run caselog",
+    "check": "npm run verify && npm run golden && npm run paraphrase && npm run caselog && npm run probe",
     "caselog": "node caselog-eval.mjs"
   },
   "dependencies": {

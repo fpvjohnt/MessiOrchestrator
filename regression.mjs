@@ -29,7 +29,7 @@ import { CLUSTERS, resolveCluster } from "./polymath-mcp/dist/clusters.js";
 import { buildIt } from "./polymath-mcp/dist/build.js";
 import { askTheExpert } from "./polymath-mcp/dist/consult.js";
 import { selectAssets } from "./dist/router.js";
-import { needsResearchShape } from "./dist/router.js";
+import { needsResearchShape, explainRouting } from "./dist/router.js";
 import { suggestTool, describeUnknownTool, nameSimilarity } from "./dist/tool-suggest.js";
 import { checkAssets, renderHealth } from "./dist/health.js";
 import { synthesizeCase, isFailed, renderOutcome } from "./dist/synthesis.js";
@@ -768,6 +768,21 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
   check("researchShape: a proper-noun run on a long objective fires", needsResearchShape("figure out whether the person named John Tapia Smith is a good fit for this role") === true);
   // A long objective with none of the signals must NOT fire — no free verifier.
   check("researchShape: a long objective with no shape signal stays false", needsResearchShape("i keep wondering about the way my grandmother used to cook this particular dish every winter") === false);
+}
+
+// ── 14a1c. explainRouting mirrors selectAssets and labels the near-misses ────
+{
+  const assets = [
+    { name: "alpha", description: "", tags: ["apple", "banana"], status: "active" },
+    { name: "beta", description: "", tags: ["apple"], status: "active" },
+    { name: "gamma", description: "cherry things", tags: ["zzz"], status: "active" },
+  ];
+  const e = explainRouting("apple banana", assets);
+  check("explainRouting: assigned mirrors selectAssets exactly", JSON.stringify(e.assigned) === JSON.stringify(selectAssets("apple banana", assets).assigned), JSON.stringify(e.assigned));
+  check("explainRouting: the winner is marked assigned", e.candidates.find((c) => c.name === "alpha")?.verdict === "assigned");
+  check("explainRouting: a floor-passing loser under the ratio is below-ratio", e.candidates.find((c) => c.name === "beta")?.verdict === "below-ratio", JSON.stringify(e.candidates));
+  check("explainRouting: a no-match asset is below-floor", e.candidates.find((c) => c.name === "gamma")?.verdict === "below-floor");
+  check("explainRouting: every candidate carries a verdict", e.candidates.every((c) => typeof c.verdict === "string"));
 }
 
 // ── 14a2. Corroboration must not be claimed when it cannot vary ─────────────
