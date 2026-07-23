@@ -14,7 +14,7 @@ export const GOLDEN = [
   // homebuyer
   { q: "how much house can I afford in Murrieta on my salary", expect: ["homebuyer"] },
   { q: "what's the difference between an FHA and a conventional loan", expect: ["homebuyer"] },
-  { q: "is it better to rent or buy a condo right now", expect: ["homebuyer"] },
+  { q: "is it better to rent or buy a condo right now", expect: ["homebuyer"], alsoOk: ["research"], note: "VERIFIER: asks about a fact with a shelf life, so research co-assigns as the independent checker (src/index.ts protocol: never let the maker verify itself). Labeled by INTENT - the specialists are offline and deterministic, so on this question they are the least current source available. Rent-vs-buy turns on CURRENT rates." },
   { q: "what are Mello-Roos taxes and do they apply in Temecula", expect: ["homebuyer"] },
   { q: "how much cash do I need to close on a house", expect: ["homebuyer"] },
 
@@ -107,10 +107,10 @@ export const GOLDEN = [
 
   // openai (OpenAI platform engineering — the vendor-specific EXECUTION layer)
   { q: "should I use the Responses API or the Agents SDK", expect: ["openai"] },
-  { q: "is the OpenAI Chat Completions API deprecated", expect: ["openai"] },
+  { q: "is the OpenAI Chat Completions API deprecated", expect: ["openai"], alsoOk: ["research"], note: "VERIFIER: asks about a fact with a shelf life, so research co-assigns as the independent checker (src/index.ts protocol: never let the maker verify itself). Labeled by INTENT - the specialists are offline and deterministic, so on this question they are the least current source available. Deprecation status is exactly what openai check_openai refuses to answer from memory." },
   { q: "my code broke after migrating to the Responses API", expect: ["openai"] },
   { q: "should I fine-tune GPT on our internal documentation", expect: ["openai"] },
-  { q: "how do I cut my OpenAI API costs with prompt caching", expect: ["openai"] },
+  { q: "how do I cut my OpenAI API costs with prompt caching", expect: ["openai"], alsoOk: ["research"], note: "VERIFIER: asks about a fact with a shelf life, so research co-assigns as the independent checker (src/index.ts protocol: never let the maker verify itself). Labeled by INTENT - the specialists are offline and deterministic, so on this question they are the least current source available. Pricing moves on a scale of weeks." },
   { q: "what does store true do on an OpenAI response", expect: ["openai"] },
   // The genuine openai↔loop boundary — vendor-specific execution vs vendor-neutral architecture.
   { q: "how do I build a customer support agent on OpenAI with handoffs", expect: ["openai"], alsoOk: ["loop"], note: "multi-agent vocab pulls loop; 'on OpenAI' makes it an execution question — openai should lead" },
@@ -133,7 +133,7 @@ export const GOLDEN = [
   { q: "what Python libraries do I need for machine learning", expect: ["aiforge"] },
   { q: "how do embeddings and vector search actually work", expect: ["aiforge"] },
   { q: "how does a tokenizer split text into subword tokens", expect: ["aiforge"], note: "tokenization is aiforge's craft/science ('language model' phrasing would pull linguistics)" },
-  { q: "my LangChain code uses AgentExecutor and it says deprecated", expect: ["aiforge"] },
+  { q: "my LangChain code uses AgentExecutor and it says deprecated", expect: ["aiforge"], alsoOk: ["research"], note: "VERIFIER: asks about a fact with a shelf life, so research co-assigns as the independent checker (src/index.ts protocol: never let the maker verify itself). Labeled by INTENT - the specialists are offline and deterministic, so on this question they are the least current source available. aiforge check_practice says this stack rots in months." },
   { q: "what is the difference between RAG and fine-tuning", expect: ["aiforge"], alsoOk: ["loop"], note: "RAG pulls loop; the fine-tune-vs-RAG-vs-prompt decision is aiforge's craft" },
 
   // gitforge (Git & GitHub)
@@ -159,7 +159,7 @@ export const GOLDEN = [
   // kalshi (event contracts & prediction markets)
   { q: "how do prediction markets actually work", expect: ["kalshi"] },
   { q: "what is an event contract and how does it settle", expect: ["kalshi"] },
-  { q: "how much do the fees cost on an event contract", expect: ["kalshi"] },
+  { q: "how much do the fees cost on an event contract", expect: ["kalshi"], alsoOk: ["research"], note: "VERIFIER: asks about a fact with a shelf life, so research co-assigns as the independent checker (src/index.ts protocol: never let the maker verify itself). Labeled by INTENT - the specialists are offline and deterministic, so on this question they are the least current source available. The kalshi asset holds NO fee numbers by design." },
   // DOCUMENTED CEILING CASE — expected to MISS, and left in deliberately.
   // Only prediction markets quote a contract in cents, so the intent is
   // unambiguous to a human, but the query's one strong noun is "contract",

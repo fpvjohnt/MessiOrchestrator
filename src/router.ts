@@ -1,5 +1,5 @@
 import type { AssetConfig } from "./types.js";
-import { expandConcepts } from "./synonyms.js";
+import { expandConcepts, stem } from "./synonyms.js";
 
 export interface AssetMatch {
   name: string;
@@ -34,12 +34,13 @@ function tokenize(text: string): string[] {
     .filter(Boolean);
 }
 
-// Conservative plural fold so "migraines"/"stocks"/"cops" match the singular
-// tag. Only trailing "s" on words >3 chars, never "ss" (address, access).
-// Applied to BOTH query and tag tokens so the fold is symmetric.
-function stem(w: string): string {
-  return w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
-}
+// The conservative plural fold ("migraines"/"stocks"/"cops" -> singular) now
+// lives in synonyms.ts and is imported, so a canonical concept and an asset tag
+// are folded by the SAME function. They were folded by different paths before:
+// tags went through this stemmer while synonyms.ts added canonical forms raw,
+// so any canon ending in "s" silently failed to match its own tag — the idiom
+// for "react hook" fired correctly and still matched nothing, because the tag
+// `reactjs` had been folded to `reactj`.
 
 // The registry carries 67 closed-compound tags — blackhole, bodylanguage,
 // custominstructions, responsesapi, mergeconflict, workvisa — that tokenize()
@@ -162,6 +163,57 @@ export function fallbackAssets(assets: AssetConfig[]): AssetConfig[] {
   return assets.filter((a) => a.status === "active" && a.fallback);
 }
 
+// Words that mean "this answer has a shelf life". Every asset in this system is
+// deterministic and offline by design, so on these questions the specialist is
+// the LEAST reliable source in the building — it is answering from a map
+// someone wrote months ago. Deliberately narrow: a verb like "compare" or
+// "explain" does not belong here, because it says nothing about freshness.
+// Each exclusion below was a measured false positive, not caution:
+//   "change"/"changed" — caught "did the routing change over time", an
+//        overseer question about this system's OWN case log. Nothing to verify
+//        on the web.
+//   "rate" (singular)  — caught "how do I handle rate limiting", a technique.
+//        The plural "rates" stays: that is how prices are asked about
+//        ("what are mortgage rates right now").
+//   "version"/"release" — would catch "version control" (gitforge).
+//   "check"/"still"    — too generic to mean freshness on their own.
+const FRESHNESS_SIGNALS = new Set([
+  "current", "currently", "latest", "newest", "today", "now", "recent", "recently",
+  "verify", "up-to-date", "updated",
+  "price", "prices", "pricing", "cost", "costs", "rates", "news",
+  "deprecated",
+  "2024", "2025", "2026", "2027",
+]);
+
+// Explicit requests to go and look something up. The real case log is full of
+// objectives that literally begin "Research property at…" or "Look up…" and
+// still did not get the research asset, because a NAME match scores 2 against a
+// floor of 3 — the one asset being asked for by name was the one filtered out.
+// 25 of the 40 real-traffic misses were a missing `research`, by far the
+// largest single cause.
+const LOOKUP_SIGNALS = new Set([
+  "research", "investigate", "sources", "source", "cite", "citations",
+  "lookup", "docs", "documentation", "official",
+]);
+
+// Two-word asks that no single token captures.
+const LOOKUP_PHRASES = ["look up", "find out", "dig into", "look into", "search for"];
+
+/**
+ * Should a live-lookup asset accompany the specialists? True when the objective
+ * either asks about something that MOVES (a price, a version, a deprecation) or
+ * explicitly asks for something to be looked up. Matched on RAW tokens (not the
+ * stemmed content set) so the words mean what they say.
+ */
+export function needsFreshFacts(objective: string): boolean {
+  const tokens = tokenize(objective);
+  for (const token of tokens) {
+    if (FRESHNESS_SIGNALS.has(token) || LOOKUP_SIGNALS.has(token)) return true;
+  }
+  const joined = tokens.join(" ");
+  return LOOKUP_PHRASES.some((p) => joined.includes(p));
+}
+
 export interface AssetSelection {
   assigned: string[];
   rationale: string;
@@ -222,13 +274,33 @@ export function selectAssets(
   const matches = anchored.length > 0 ? anchored : scored;
   const confident = matches.filter((m) => m.score >= matches[0].score * thresholds.secondaryRatio);
   if (confident.length > 0) {
-    return {
-      assigned: confident.slice(0, 3).map((m) => m.name),
-      rationale: confident
-        .slice(0, 3)
-        .map((m) => `${m.name} (score ${m.score}${m.matchedTags.length ? `, tags: ${m.matchedTags.join(", ")}` : ""})`)
-        .join("; "),
-    };
+    const specialists = confident.slice(0, 3).map((m) => m.name);
+    const rationale = confident
+      .slice(0, 3)
+      .map((m) => `${m.name} (score ${m.score}${m.matchedTags.length ? `, tags: ${m.matchedTags.join(", ")}` : ""})`)
+      .join("; ");
+
+    // Fallback assets could ONLY ever fire when nothing matched, so `research`
+    // — the asset the orchestrator's own instructions call "the independent
+    // checker", in a protocol that says never let the maker verify itself —
+    // was structurally unable to accompany a specialist. The case log shows the
+    // operator working around that by hand: 42% of real cases used research
+    // anyway, and most of the routing misses were "research alone was missing".
+    //
+    // It is NOT added to everything, which would just be noise. It joins only
+    // when the objective asks about something that MOVES — a current price, the
+    // latest version, whether a thing is still true — because that is exactly
+    // when a deterministic offline specialist is most confidently out of date.
+    const verifiers = fallbackAssets(assets)
+      .map((a) => a.name)
+      .filter((name) => !specialists.includes(name));
+    if (verifiers.length > 0 && needsFreshFacts(objective)) {
+      return {
+        assigned: [...specialists, ...verifiers],
+        rationale: `${rationale}; + ${verifiers.join(", ")} (objective asks about current/verifiable facts — the specialists are offline and deterministic)`,
+      };
+    }
+    return { assigned: specialists, rationale };
   }
   // No keyword match. A plain-language question ("what is X?") often shares no
   // literal tokens with any asset's tags — so fall back to any asset marked as

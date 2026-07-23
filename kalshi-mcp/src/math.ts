@@ -165,7 +165,13 @@ export function priceCheck(input: PriceCheckInput): string {
     `  Total cost (stake + fees)    $${round2(r.totalCost).toFixed(2)}`,
     `  Total fees                   $${round2(r.totalFees).toFixed(2)}`,
     `  Expected value               $${round2(r.totalEv).toFixed(2)}`,
-    `  Max loss / max gain          $${round2(r.price * r.contracts).toFixed(2)} / $${round2((1 - r.price) * r.contracts).toFixed(2)}`,
+    // Fees are sunk the moment you trade, so they belong in BOTH extremes: the
+    // worst case is stake+fees and the best case is the payout MINUS fees.
+    // These previously printed the fee-free figures directly under a
+    // "Total cost (stake + fees)" line that included them — two adjacent lines
+    // contradicting each other, and understating downside on a tool whose
+    // entire purpose is honest arithmetic.
+    `  Max loss / max gain          $${round2(r.totalCost).toFixed(2)} / $${round2((1 - r.price) * r.contracts - r.totalFees).toFixed(2)}`,
   ];
 
   if (input.days_to_expiry && input.days_to_expiry > 0) {

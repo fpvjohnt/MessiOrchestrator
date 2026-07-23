@@ -49,6 +49,7 @@ import { readMarket as kaRead, mythVsReality as kaMyth } from "./kalshi-mcp/dist
 import { priceCheck as kaPriceCheck, computePriceCheck as kaCompute, orderFee as kaOrderFee } from "./kalshi-mcp/dist/math.js";
 import { checkKalshi as kaCheck, kalshiVerdict as kaVerdict } from "./kalshi-mcp/dist/verify.js";
 import { dollarsToCents, secFilings, kalshiMarkets } from "./research-mcp/dist/data-sources.js";
+import { assertPublicUrl } from "./research-mcp/dist/ssrf-guard.js";
 import { howTo as apHowTo, debug as apDebug, mythVsReality as apMyth } from "./apiforge-mcp/dist/toolkit.js";
 import { SUBJECTS, resolveSubject } from "./education-mcp/dist/subjects.js";
 import { AREAS, resolveArea } from "./communication-mcp/dist/areas.js";
@@ -620,6 +621,110 @@ check("kalshi: market_price 1 means ONE CENT, not one dollar", kaCompute({ your_
 check("kalshi: market_price 0.63 (dollars) === 63 (cents)", kaCompute({ your_probability: 50, market_price: 0.63 }).price === kaCompute({ your_probability: 50, market_price: 63 }).price);
 check("kalshi: probability 1 means certainty, not one percent", kaCompute({ your_probability: 1, market_price: 50 }).probability === 1);
 check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ your_probability: 35, market_price: 1, contracts: 100 }).worthIt === true);
+// The displayed extremes must RECONCILE with the reported EV. They didn't:
+// "Max loss" printed the fee-free stake directly under a "Total cost (stake +
+// fees)" line that included them, so the tool understated its own downside.
+// EV = p*maxGain - (1-p)*maxLoss is the identity that catches it.
+{
+  const r = kaCompute({ your_probability: 60, market_price: 50, contracts: 100 });
+  const maxLoss = r.totalCost;
+  const maxGain = (1 - r.price) * r.contracts - r.totalFees;
+  const implied = r.probability * maxGain - (1 - r.probability) * maxLoss;
+  check("kalshi: EV reconciles with fee-inclusive max loss/gain", Math.abs(implied - r.totalEv) < 1e-9, `EV ${r.totalEv} vs implied ${implied}`);
+  check("kalshi: max loss exceeds the bare stake (fees are sunk)", maxLoss > r.price * r.contracts);
+  const out = kaPriceCheck({ your_probability: 60, market_price: 50, contracts: 100 });
+  check("kalshi: printed max loss equals printed total cost", /Max loss \/ max gain\s+\$51\.75 \/ \$48\.25/.test(out), out.split("\n").find((l) => l.includes("Max loss")) ?? "");
+}
+
+// ── 14b1. No tag may be claimed by two active assets ────────────────────────
+// AGENTS.md forbids this in two separate rules, and nothing enforced it — 9
+// collisions had accumulated, three of them causing verified misroutes:
+// "what compounds make up table salt" went to nestegg (compound interest),
+// "how do I write a for loop in python" went to loop (the agent-loop asset),
+// and homebuyer's "agent" (realtor) fought loop's "agent" (AI agent).
+// A tag is the deliberate routing signal; two owners means it points nowhere.
+{
+  const owners = new Map();
+  for (const a of registry.filter((x) => x.status === "active")) {
+    for (const t of a.tags ?? []) {
+      if (!owners.has(t)) owners.set(t, []);
+      owners.get(t).push(a.name);
+    }
+  }
+  const shared = [...owners.entries()].filter(([, names]) => names.length > 1);
+  check(
+    "no tag is claimed by two active assets",
+    shared.length === 0,
+    shared.map(([t, names]) => `${t}: ${names.join(" + ")}`).join("; ")
+  );
+  // The same word in two SENSES is the subtler version — it can't be detected
+  // mechanically, so these are the specific pairs that were separated, pinned
+  // so a future edit has to argue with a named test rather than a blank file.
+  const separated = [
+    ["compound", "curiosity", "nestegg"],
+    ["agent", "loop", "homebuyer"],
+    ["tax", "lawguide", "homebuyer"],
+    ["react", "loop", "polymath"],
+    ["immigration", "government", "lawguide"],
+  ];
+  for (const [tag, keeps, lost] of separated) {
+    const k = registry.find((a) => a.name === keeps);
+    const l = registry.find((a) => a.name === lost);
+    check(`tag "${tag}" belongs to ${keeps} alone, not ${lost}`, k?.tags.includes(tag) && !l?.tags.includes(tag));
+  }
+}
+
+// ── 14b2. SSRF guard — a security control that had NO test at all ───────────
+// It shipped with a real, exploitable bypass: it pattern-matched the address
+// STRING for IPv4-mapped IPv6, but `new URL()` normalises
+// `[::ffff:127.0.0.1]` to compressed hex (`::ffff:7f00:1`) before the guard
+// sees it, so that branch was dead code for every URL. Verified live:
+// http://[::ffff:127.0.0.1]:8787/ reached the bridge while http://127.0.0.1:8787/
+// was correctly refused. fetch_page is caller-reachable and buildDossier
+// auto-fetches search results, so a hostile AAAA record was enough.
+// Every row below is a vector that must stay closed.
+{
+  const mustBlock = [
+    ["plain loopback", "http://127.0.0.1:8787/"],
+    ["IPv4-mapped loopback (THE bypass)", "http://[::ffff:127.0.0.1]:8787/"],
+    ["IPv4-mapped, hex form", "http://[::ffff:7f00:1]/"],
+    ["IPv4-mapped metadata endpoint", "http://[::ffff:a9fe:a9fe]/"],
+    ["IPv4-mapped, fully expanded", "http://[0:0:0:0:0:ffff:7f00:0001]/"],
+    ["IPv4-compatible (deprecated)", "http://[::127.0.0.1]/"],
+    ["NAT64 64:ff9b::/96", "http://[64:ff9b::7f00:1]/"],
+    ["6to4 2002::/16", "http://[2002:7f00:1::]/"],
+    ["cloud metadata", "http://169.254.169.254/"],
+    ["IPv6 loopback", "http://[::1]/"],
+    ["unique-local fc00::/7", "http://[fd00::1]/"],
+    ["link-local fe80::/10", "http://[fe80::1]/"],
+    ["IPv6 multicast", "http://[ff02::1]/"],
+    ["RFC1918", "http://10.0.0.5/"],
+    ["localhost by name", "http://localhost/"],
+    ["non-http scheme", "file:///C:/Windows/win.ini"],
+  ];
+  for (const [label, url] of mustBlock) {
+    let allowed = true;
+    try {
+      await assertPublicUrl(url);
+    } catch {
+      allowed = false;
+    }
+    check(`ssrf blocks ${label}`, allowed === false, `ALLOWED ${url}`);
+  }
+  // The guard must not become so blunt it refuses the real web.
+  for (const [label, url] of [
+    ["a public v4 address", "http://8.8.8.8/"],
+    ["a public v6 address", "http://[2606:4700:4700::1111]/"],
+  ]) {
+    let allowed = true;
+    try {
+      await assertPublicUrl(url);
+    } catch {
+      allowed = false;
+    }
+    check(`ssrf still allows ${label}`, allowed === true, `blocked ${url}`);
+  }
+}
 
 // ── 14c. Structured data sources (sec_filings, kalshi_markets) ──────────────
 // This suite makes no network calls, so what is tested here is everything that

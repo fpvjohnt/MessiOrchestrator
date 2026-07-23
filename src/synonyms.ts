@@ -46,6 +46,10 @@ const CONCEPTS: Record<string, string[]> = {
   legal: ["legally", "lawful", "lawfully", "illegal", "illegally"],
   // overseer 'log' — same plural-only stemmer gap on the past tense.
   log: ["logged", "logging"],
+  // lawguide 'tax' — the stemmer only strips a trailing "s", so "taxes" becomes
+  // "taxe" and never reaches the tag. "do I owe taxes on this settlement" fell
+  // through to research because of one letter.
+  tax: ["taxe", "taxation"],
 };
 
 // Multi-word concepts. The KEY is the phrase as the query says it, in
@@ -151,7 +155,38 @@ const IDIOMS: Record<string, { canon?: string; consume: string[] }> = {
   // the department a bot answers for, not polymath's 'support' specialty.
   "customer support": { consume: ["support"] },
   "customer service": { consume: ["support", "service"] },
+  // A programming loop, not the agentic-AI 'loop' asset. `loop` is loop's tag
+  // per AGENTS.md, so ordinary code questions ("how do I write a for loop in
+  // python") were landing on the agent-architecture specialist.
+  "for loop": { consume: ["loop"] },
+  "while loop": { consume: ["loop"] },
+  "nested loop": { consume: ["loop"] },
+  "infinite loop": { consume: ["loop"] },
+  // React.js, not the ReAct agent pattern — two different things one letter of
+  // capitalisation apart, which tokenizing destroys. loop keeps the bare
+  // `react` tag (its ReAct pattern is almost always written "ReAct pattern" or
+  // "ReAct agent"); the front-end senses are named explicitly here.
+  "react hook": { canon: "reactjs", consume: ["react"] },
+  "react component": { canon: "reactjs", consume: ["react"] },
+  "react app": { canon: "reactjs", consume: ["react"] },
+  "react state": { canon: "reactjs", consume: ["react"] },
 };
+
+/**
+ * The plural fold, shared with router.ts. It lives HERE, not there, because
+ * both the query tokens and this file's canonical forms have to go through the
+ * identical transform or they silently fail to meet.
+ *
+ * That is not hypothetical: the canon `reactjs` was added to the query set
+ * unstemmed while the asset's `reactjs` TAG was stemmed to `reactj`, so an
+ * idiom that fired perfectly still matched nothing. Any canon ending in "s"
+ * had the same latent bug. Stemming canons at load closes the whole class.
+ *
+ * Only a trailing "s" on words >3 chars, never "ss" (address, access).
+ */
+export function stem(w: string): string {
+  return w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
+}
 
 const SURFACE_TO_CANON = new Map<string, string>();
 for (const [canon, surfaces] of Object.entries(CONCEPTS)) {
@@ -189,19 +224,19 @@ export function expandConcepts(tokens: Iterable<string>, sequence: string[] = []
   const out = new Set(tokens);
   for (const t of tokens) {
     const canon = SURFACE_TO_CANON.get(t);
-    if (canon) out.add(canon);
+    if (canon) out.add(stem(canon));
   }
   const grams = phraseGrams(sequence);
   for (const gram of grams) {
     const canon = PHRASES[gram];
-    if (canon) out.add(canon);
+    if (canon) out.add(stem(canon));
   }
   // Idioms last: a consumed token must not survive because some other rule
   // added it back.
   for (const gram of grams) {
     const idiom = IDIOMS[gram];
     if (!idiom) continue;
-    if (idiom.canon) out.add(idiom.canon);
+    if (idiom.canon) out.add(stem(idiom.canon));
     for (const token of idiom.consume) out.delete(token);
   }
   return out;

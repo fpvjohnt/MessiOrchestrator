@@ -18,7 +18,8 @@ npm run build:all  # build root + every asset
 npm test           # regression.mjs — pure functions from dist/, no spawn, no network
 npm run golden     # routing accuracy vs golden-set.mjs
 npm run health     # spawns every asset, confirms reachable + tool count
-npm run check      # verify + golden + paraphrase — the full gate
+npm run check      # verify + golden + paraphrase + caselog — the full gate
+npm run caselog    # routing vs REAL traffic (data/cases.json) — the non-self-graded number
 ```
 
 Run `npm run build:all` before `npm test` — the suite tests compiled `dist/`, not `src/`.
@@ -58,8 +59,9 @@ Build output goes to `dist/`. Register in `data/registry.json` with `command: "n
 ## Done means
 
 1. `npm run build:all` clean.
-2. `npm test` — **all green** (currently 2616/2616).
-3. `npm run golden` — baseline holds (currently 104/105 primary, 101/105 clean). New assets add golden entries, including the boundary cases against the neighbouring asset.
-4. `npm run health` — N/N reachable, your asset UP with its tool count.
+2. `npm test` — **all green** (currently 2656/2656).
+3. `npm run golden` — baseline holds (currently 104/105 primary, 102/105 clean). New assets add golden entries, including the boundary cases against the neighbouring asset.
+4. `npm run caselog` — real-traffic coverage holds (currently 71%). **This is the honest number**; golden is self-authored and reads ~30 points higher. An ablation showed the whole `PHRASES` layer changes ZERO real-traffic decisions while adding +11 on the self-written paraphrase set. Trust this one. New assets add golden entries, including the boundary cases against the neighbouring asset.
+5. `npm run health` — N/N reachable, your asset UP with its tool count.
 
 If you changed routing, report the golden primary-hit and clean-hit numbers before and after. A drop is a regression even if the suite is green.

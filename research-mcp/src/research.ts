@@ -90,11 +90,20 @@ export interface Dossier {
  * The full pipeline: multi-provider search, then fetch and extract the top
  * sources so the caller gets primary text, not just snippets.
  */
+// 6,000 chars x 3 sources put up to 18KB of raw page text into model context on
+// every call, and the case log shows what that cost: research produced 63% of
+// ALL context spend across every asset — a median of 13,690 characters per
+// call, p95 20,576. 2,000 is enough to tell whether a source answers the
+// question, which is what the dossier is FOR; the URL and the follow-up leads
+// are right there for going deeper, and fetch_page will pull a promising source
+// in full. Raise it per-call when a specific question genuinely needs the body.
+const DEFAULT_EXCERPT_CHARS = 2_000;
+
 export async function buildDossier(
   question: string,
   requestedProviders?: string[],
   fetchTop = 3,
-  excerptChars = 6_000
+  excerptChars = DEFAULT_EXCERPT_CHARS
 ): Promise<Dossier> {
   const providers = activeProviders(requestedProviders);
   const { results, providerErrors } = await multiSearch(question, requestedProviders);

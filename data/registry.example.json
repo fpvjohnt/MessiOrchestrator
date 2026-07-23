@@ -29,8 +29,6 @@
       "mortgage",
       "loan",
       "realtor",
-      "broker",
-      "agent",
       "hoa",
       "closing",
       "escrow",
@@ -45,9 +43,11 @@
       "fha",
       "va",
       "property",
-      "tax",
       "mello-roos",
-      "dream"
+      "dream",
+      "realestateagent",
+      "realestatebroker",
+      "propertytax"
     ],
     "transport": "stdio",
     "command": "node",
@@ -93,11 +93,13 @@
       "broker",
       "advisor",
       "fiduciary",
-      "compound",
       "fees",
       "capital",
       "gains",
-      "dividend"
+      "dividend",
+      "compounding",
+      "compoundinterest",
+      "compounded"
     ],
     "transport": "stdio",
     "command": "node",
@@ -135,7 +137,6 @@
       "lease",
       "landlord",
       "tenant",
-      "immigration",
       "ice",
       "deportation",
       "notario",
@@ -150,7 +151,8 @@
       "misdemeanor",
       "felony",
       "accident",
-      "injury"
+      "injury",
+      "immigrationlaw"
     ],
     "transport": "stdio",
     "command": "node",
@@ -287,7 +289,6 @@
       "frontend",
       "css",
       "html",
-      "react",
       "design",
       "ux",
       "ui",
@@ -300,9 +301,10 @@
       "supplychain",
       "logistics",
       "messenger",
-      "webhook",
       "demo",
-      "dataengineer"
+      "dataengineer",
+      "reactjs",
+      "webhookintegration"
     ],
     "transport": "stdio",
     "command": "node",
@@ -862,8 +864,6 @@
       "assistants",
       "chatcompletions",
       "structuredoutputs",
-      "finetune",
-      "finetuning",
       "realtime",
       "whisper",
       "dalle",
@@ -879,7 +879,8 @@
       "fde",
       "forwarddeployed",
       "posttraining",
-      "workday"
+      "workday",
+      "openaifinetuning"
     ],
     "transport": "stdio",
     "command": "node",

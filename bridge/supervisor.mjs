@@ -291,29 +291,96 @@ async function killImage(image) {
   log(`killed ${image}: ${r.ok ? "ok" : r.out}`);
 }
 
-async function relaunch() {
-  // Detached: start-all.cmd uses `start /b` for long-lived processes, and this
-  // supervisor must not become their parent — if it did, restarting the
-  // supervisor would take the bridge down with it.
-  const child = spawn("cmd.exe", ["/c", join(HERE, "start-all.cmd")], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    cwd: ROOT,
+// How long to give start-all.cmd to finish. It only has to spawn two detached
+// processes, so seconds is generous; anything longer means it is wedged.
+const RELAUNCH_TIMEOUT_MS = 30_000;
+// How long to wait after a relaunch before checking whether it actually worked.
+// The bridge binds its port in well under this.
+const RELAUNCH_VERIFY_MS = 10_000;
+
+/**
+ * Runs start-all.cmd and WAITS for it, rather than firing and forgetting.
+ *
+ * The fire-and-forget version cost three hours of downtime: start-all.cmd
+ * wedged on a `netstat | findstr` pipeline (a detached cmd.exe has no stdin, so
+ * findstr never sees EOF), and 15 consecutive restarts each spawned a new hung
+ * process while the supervisor logged "restarting" and reported success. The
+ * pipeline is gone, but a relaunch that silently does nothing must never again
+ * be indistinguishable from one that works.
+ *
+ * Still detached — start-all.cmd uses `start /b` for the long-lived processes
+ * and this supervisor must not become their parent, or restarting the
+ * supervisor would take the bridge down with it. Detaching the process group is
+ * separate from waiting for the launcher script to exit.
+ */
+function relaunch(args = []) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    const child = spawn("cmd.exe", ["/c", join(HERE, "start-all.cmd"), ...args], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      cwd: ROOT,
+    });
+    child.unref();
+
+    const timer = setTimeout(() => {
+      // The launcher itself is stuck. Say so loudly — this is the failure that
+      // hid behind "restarting" 15 times.
+      done({ ok: false, reason: `start-all.cmd did not exit within ${RELAUNCH_TIMEOUT_MS}ms (launcher wedged)` });
+    }, RELAUNCH_TIMEOUT_MS);
+
+    child.on("error", (err) => done({ ok: false, reason: `could not spawn start-all.cmd: ${err.message}` }));
+    child.on("exit", (code) =>
+      done(code === 0 ? { ok: true } : { ok: false, reason: `start-all.cmd exited ${code}` })
+    );
   });
-  child.unref();
+}
+
+/**
+ * Relaunch, then PROVE it worked by re-probing. Without this the supervisor can
+ * only report what it attempted, never what it achieved.
+ */
+async function relaunchAndVerify(component, args, probe) {
+  const launch = await relaunch(args);
+  if (!launch.ok) {
+    log(`RESTART-INEFFECTIVE ${component}: ${launch.reason}`);
+    return { ok: false, reason: launch.reason };
+  }
+  await new Promise((r) => setTimeout(r, RELAUNCH_VERIFY_MS));
+  const probed = await probe();
+  const ok = probed?.ok === true;
+  log(
+    ok
+      ? `${component}: relaunch verified (responding after restart)`
+      : `RESTART-INEFFECTIVE ${component}: still not responding ${RELAUNCH_VERIFY_MS}ms after a clean relaunch`
+  );
+  return ok ? { ok: true } : { ok: false, reason: "still not responding after a clean relaunch" };
 }
 
 async function restartBridge() {
   const killed = await killListenerOnPort(BRIDGE_PORT);
   log(`restarting bridge (killed ${killed} listener(s))`);
-  await relaunch();
+  // --force-bridge: the listener was just killed, so the port is free and the
+  // script must not re-derive that for itself.
+  return relaunchAndVerify("bridge", ["--force-bridge"], () =>
+    probeJson(`http://127.0.0.1:${BRIDGE_PORT}/healthz`)
+  );
 }
 
 async function restartTunnel() {
   await killImage("cloudflared.exe");
   log("restarting cloudflared");
-  await relaunch();
+  return relaunchAndVerify("cloudflared tunnel", ["--force-tunnel"], () =>
+    probeJson(`http://127.0.0.1:${TUNNEL_METRICS_PORT}/ready`)
+  );
 }
 
 // ── loop ──────────────────────────────────────────────────────────────────
@@ -352,7 +419,21 @@ async function tick() {
     for (const a of alerts) await deliver(a);
     if (restart) {
       try {
-        await c.restart();
+        const outcome = await c.restart();
+        // A restart that changed nothing is a DIFFERENT failure from the
+        // service being down, and it needs its own alert — otherwise the
+        // repeat-alert schedule just keeps saying "still down, restarting
+        // again" while the restart mechanism itself is broken. That is exactly
+        // how a three-hour outage produced 15 identical alerts and no clue.
+        if (outcome && outcome.ok === false) {
+          await deliver({
+            level: "CRITICAL",
+            title: `${c.name} restart is not working`,
+            message:
+              `Restarted ${c.name} but it did not come back: ${outcome.reason}. ` +
+              `The recovery mechanism itself needs attention - repeated restarts will not fix this.`,
+          });
+        }
       } catch (err) {
         log(`${c.name} restart failed:`, err?.message ?? String(err));
       }

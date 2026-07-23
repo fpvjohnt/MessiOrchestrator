@@ -64,9 +64,48 @@ function textResult(text: string) {
 // appendLog/case_report pays to parse and rewrite all of it.
 const MAX_LOGGED_CHARS = 8_192;
 
+/**
+ * Truncate for persistence WITHOUT destroying the structure synthesis reads.
+ *
+ * The previous version stored `JSON.stringify(value).slice(0, 8192)`, which
+ * defeated the BOTTOM LINE convention entirely: serializing turns real
+ * newlines into the two-character escape `\n`, so synthesis.ts's
+ * `text.split("\n")` saw ONE line beginning `{"content":[{"type":"text",...`
+ * and `/^\s*BOTTOM LINE/` never matched. A 20KB dossier whose FIRST line was a
+ * BOTTOM LINE rendered as "(no headline extracted — returned data without a
+ * BOTTOM LINE)" — blaming the asset for an omission it had not made. It hit
+ * `research` hardest, which is both the fallback asset and the most verbose
+ * one: 32 of 226 successful log entries were truncated, all of them research.
+ *
+ * So truncate the TEXT INSIDE the content blocks and keep the shape. The
+ * headline survives because it is at the top of the text, and the newlines
+ * survive because nothing is serialized on the way in.
+ */
 function capForLog(value: unknown): unknown {
   const serialized = JSON.stringify(value) ?? "null";
   if (serialized.length <= MAX_LOGGED_CHARS) return value;
+
+  const content = (value as { content?: unknown })?.content;
+  if (Array.isArray(content)) {
+    // Share the budget across blocks so a many-block result can't blow past it.
+    const perBlock = Math.max(512, Math.floor(MAX_LOGGED_CHARS / content.length));
+    return {
+      ...(value as object),
+      truncated: true,
+      originalChars: serialized.length,
+      content: content.map((block) => {
+        const text = (block as { text?: unknown })?.text;
+        if (typeof text !== "string" || text.length <= perBlock) return block;
+        return {
+          ...(block as object),
+          text: `${text.slice(0, perBlock)}\n[... ${text.length - perBlock} more characters truncated for the case log ...]`,
+        };
+      }),
+    };
+  }
+
+  // Not a content-block result — fall back to the old behaviour, which is fine
+  // for structured data nobody extracts a headline from.
   return {
     truncated: true,
     originalChars: serialized.length,
