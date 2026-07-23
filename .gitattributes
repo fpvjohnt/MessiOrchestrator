@@ -1,0 +1,16 @@
+# Windows script hosts require CRLF. cmd.exe does not fail loudly on an LF-only
+# batch file — it half-executes it, dropping leading characters from lines
+# ("netstat" -> "tstat", "REM" -> "EM") until commands stop being recognised.
+# start-all.cmd hit exactly that: the "is the bridge already listening?" guard
+# silently evaluated as failed, so the script logged "starting bridge" and then
+# ran none of the rest, leaving no bridge started and no error anywhere.
+#
+# core.autocrlf=true converts on checkout, but it only applies to files git
+# actually writes — anything created or rewritten in place by an editor or a
+# tool keeps whatever endings that tool used. These rules make it explicit and
+# checkout-independent. regression.mjs asserts it too, because a silently
+# half-executed watchdog is the worst thing in this repo to get wrong.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.vbs text eol=crlf
+*.ps1 text eol=crlf

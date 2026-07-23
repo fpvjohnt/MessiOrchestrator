@@ -9,7 +9,7 @@
 // Coverage derives from the source of truth where possible: the title-index
 // test reads CLUSTERS, so every title you add is automatically checked.
 
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { CLUSTERS, resolveCluster } from "./polymath-mcp/dist/clusters.js";
 import { buildIt } from "./polymath-mcp/dist/build.js";
 import { askTheExpert } from "./polymath-mcp/dist/consult.js";
@@ -64,6 +64,9 @@ import { analyzeErrors } from "./overseer-mcp/dist/errors.js";
 import { detectAnswerDrift } from "./overseer-mcp/dist/answer-drift.js";
 import { outcomeReport } from "./overseer-mcp/dist/outcome.js";
 import { latencyReport } from "./overseer-mcp/dist/latency.js";
+// Supervisor decision logic. Plain .mjs under bridge/, imported directly — it
+// is pure by construction (no I/O, no timers) precisely so it can be tested here.
+import { interpretBridge, interpretTunnel, createHealthTracker, UP, DOWN, DEGRADED } from "./bridge/supervisor-logic.mjs";
 
 let passed = 0;
 const failures = [];
@@ -544,6 +547,165 @@ for (const [name, out] of START_HERE) {
     example.length === registry.length,
     `example ${example.length} vs live ${registry.length}`
   );
+}
+
+// ── 18. Supervisor: liveness probes, not existence checks ──────────────────
+// The old watchdog asked netstat "is anything listening on 8787?" and tasklist
+// "is cloudflared.exe running?". Both answer yes throughout an outage, because
+// a wedged process keeps its socket and a tunnel with zero edge connections is
+// still an executable. These assertions pin the distinction that fixes that:
+// a component that is present but not WORKING must read as down.
+{
+  const IDLE_MS = 30 * 60 * 1000;
+  const healthz = (over = {}) => ({ reachable: true, status: 200, body: { ok: true, sessions: 1, oldestIdleMin: 0, uptime: 100, ...over }, error: null });
+
+  check("bridge unreachable → down", interpretBridge({ reachable: false, status: null, body: null, error: "ECONNREFUSED" }).state === DOWN);
+  check("bridge timeout → down", interpretBridge({ reachable: false, status: null, body: null, error: "no answer within 5000ms" }).state === DOWN);
+  check("bridge HTTP 500 → down", interpretBridge({ reachable: true, status: 500, body: null, error: null }).state === DOWN);
+  // Listening and answering, but not with the health document — e.g. something
+  // else grabbed the port, or the bridge is half-initialised.
+  check("bridge answering non-JSON → down", interpretBridge({ reachable: true, status: 200, body: null, error: null }).state === DOWN);
+  check("bridge ok:false → down", interpretBridge({ reachable: true, status: 200, body: { ok: false }, error: null }).state === DOWN);
+  check("bridge healthy → up", interpretBridge(healthz(), { sessionIdleMs: IDLE_MS }).state === UP);
+
+  // The reaper-stalled signal. Degraded, never down: it is answering, so
+  // killing it would drop live sessions to fix a leak that is not yet an outage.
+  const stalled = interpretBridge(healthz({ oldestIdleMin: 75 }), { sessionIdleMs: IDLE_MS });
+  check("bridge with stalled reaper → degraded", stalled.state === DEGRADED, `got ${stalled.state}`);
+  check("stalled-reaper reason names the TTL", /reap/i.test(stalled.reason), stalled.reason);
+  // Just past the TTL is normal — the sweep runs on its own interval, so a
+  // session can sit slightly over between passes. Alerting there is noise.
+  check("bridge just past TTL → still up", interpretBridge(healthz({ oldestIdleMin: 35 }), { sessionIdleMs: IDLE_MS }).state === UP);
+  check("bridge idle check skipped without a TTL", interpretBridge(healthz({ oldestIdleMin: 9999 })).state === UP);
+
+  // The tunnel case that motivated all of this: process alive, phone dead.
+  check("tunnel with 0 edge connections → down", interpretTunnel({ reachable: true, status: 200, body: { status: 200, readyConnections: 0 }, error: null }).state === DOWN);
+  check("tunnel with 4 edge connections → up", interpretTunnel({ reachable: true, status: 200, body: { status: 200, readyConnections: 4 }, error: null }).state === UP);
+  check("tunnel metrics unreachable → down", interpretTunnel({ reachable: false, status: null, body: null, error: "ECONNREFUSED" }).state === DOWN);
+  check("tunnel /ready without readyConnections → down", interpretTunnel({ reachable: true, status: 200, body: {}, error: null }).state === DOWN);
+}
+
+// ── 19. Supervisor: the alert state machine ────────────────────────────────
+// Alerting that fires on every failed probe is alerting that gets muted — at a
+// 30s interval that is 120 notifications an hour. These assertions pin the
+// rules that keep it to the few messages a human should actually see, and the
+// backoff that stops a component which cannot start from being killed and
+// relaunched forever.
+{
+  const down = { state: DOWN, reason: "no answer" };
+  const up = { state: UP, reason: "1 session(s)" };
+  const degraded = { state: DEGRADED, reason: "reaper may have stopped" };
+  const REPEAT = 30 * 60 * 1000;
+
+  {
+    const t = createHealthTracker({ failuresBeforeRestart: 2, repeatMs: REPEAT });
+    const first = t.record("bridge", down, 0);
+    check("single failure does not restart", first.restart === false);
+    check("single failure is silent", first.alerts.length === 0, `${first.alerts.length} alerts`);
+
+    const second = t.record("bridge", down, 30_000);
+    check("second consecutive failure restarts", second.restart === true);
+    check("restart raises exactly one alert", second.alerts.length === 1, `${second.alerts.length} alerts`);
+    check("first down alert is level error", second.alerts[0]?.level === "error", second.alerts[0]?.level);
+
+    // Backoff: the next restart must wait, or a component that cannot start is
+    // killed every 60s forever.
+    const third = t.record("bridge", down, 60_000);
+    check("third failure does not immediately restart again", third.restart === false);
+    check("third failure is silent (already alerted)", third.alerts.length === 0);
+    const fourth = t.record("bridge", down, 90_000);
+    check("restart retried after backoff", fourth.restart === true);
+    check("repeat restart escalates to critical", fourth.alerts[0]?.level === "critical", fourth.alerts[0]?.level);
+    check("repeat restart names the attempt count", /attempt 2/.test(fourth.alerts[0]?.message ?? ""), fourth.alerts[0]?.message);
+
+    const back = t.record("bridge", up, 120_000);
+    check("recovery raises an alert", back.alerts.length === 1 && back.alerts[0].level === "recovery");
+    check("recovery never restarts", back.restart === false);
+    // State must fully reset, or the next outage inherits a spent backoff and
+    // waits 16 minutes for its first restart.
+    const afterRecovery = t.record("bridge", down, 150_000);
+    check("failure count resets on recovery", afterRecovery.restart === false && afterRecovery.alerts.length === 0);
+  }
+
+  {
+    // A blip that never reached the alert threshold must not produce a
+    // "recovered" message with nothing before it.
+    const t = createHealthTracker({ failuresBeforeRestart: 2, repeatMs: REPEAT });
+    t.record("bridge", down, 0);
+    const back = t.record("bridge", up, 30_000);
+    check("un-alerted blip recovers silently", back.alerts.length === 0, `${back.alerts.length} alerts`);
+  }
+
+  {
+    // Degraded is a report, not a trigger.
+    const t = createHealthTracker({ failuresBeforeRestart: 2, repeatMs: REPEAT });
+    const a = t.record("bridge", degraded, 0);
+    check("degraded alerts on entry", a.alerts.length === 1 && a.alerts[0].level === "warning");
+    check("degraded never restarts", a.restart === false);
+    const b = t.record("bridge", degraded, 30_000);
+    check("degraded does not re-alert every cycle", b.alerts.length === 0);
+    check("degraded still never restarts", b.restart === false);
+    const c = t.record("bridge", degraded, REPEAT + 1);
+    check("degraded re-alerts after the repeat window", c.alerts.length === 1);
+    const d = t.record("bridge", up, REPEAT + 30_000);
+    check("degraded → up announces recovery", d.alerts.length === 1 && d.alerts[0].level === "recovery");
+  }
+
+  {
+    // A long outage must keep speaking even while the backoff holds off
+    // restarts, or a days-long failure goes quiet after the second message.
+    const t = createHealthTracker({ failuresBeforeRestart: 2, repeatMs: REPEAT, backoff: [10_000] });
+    t.record("tunnel", down, 0);
+    const restarted = t.record("tunnel", down, 30_000);
+    check("outage restarts once", restarted.restart === true);
+    const quiet = t.record("tunnel", down, 60_000);
+    check("outage stays quiet inside the repeat window", quiet.alerts.length === 0);
+    const nagged = t.record("tunnel", down, 30_000 + REPEAT + 1);
+    check("outage re-alerts after the repeat window", nagged.alerts.length === 1, `${nagged.alerts.length} alerts`);
+    check("long-outage alert is critical", nagged.alerts[0]?.level === "critical", nagged.alerts[0]?.level);
+    check("long-outage alert does not restart under backoff", nagged.restart === false);
+  }
+
+  {
+    // Components are tracked independently — a tunnel outage must not reset or
+    // trip the bridge's counters.
+    const t = createHealthTracker({ failuresBeforeRestart: 2, repeatMs: REPEAT });
+    t.record("bridge", down, 0);
+    const tunnelFirst = t.record("tunnel", down, 0);
+    check("components count failures independently", tunnelFirst.restart === false);
+    const bridgeSecond = t.record("bridge", down, 30_000);
+    check("bridge restarts on its own second failure", bridgeSecond.restart === true);
+    check("tunnel unaffected by bridge restart", t.peek("tunnel").restartAttempts === 0);
+  }
+}
+
+// ── 20. Windows scripts must be CRLF ───────────────────────────────────────
+// cmd.exe does not reject an LF-only batch file — it half-executes it, eating
+// leading characters until commands stop resolving ("netstat" → "tstat",
+// "REM" → "EM"). start-all.cmd was left LF-only by an in-place edit and the
+// result was silent: the "is the bridge already listening?" guard evaluated as
+// failed, the script logged "starting bridge", started nothing, and never
+// reached the cloudflared half. Nothing errored anywhere a human would look.
+//
+// .gitattributes now pins eol=crlf, but that only governs what git writes;
+// anything rewritten in place by a tool can still land as LF. This is the
+// assertion that actually catches it. Derived from a directory listing so new
+// scripts are covered without editing this test.
+{
+  const scriptDirs = ["bridge"];
+  const windowsExt = /\.(cmd|bat|vbs|ps1)$/i;
+  let checkedAny = false;
+  for (const dir of scriptDirs) {
+    const entries = await readdir(new URL(`./${dir}/`, import.meta.url));
+    for (const name of entries.filter((n) => windowsExt.test(n))) {
+      checkedAny = true;
+      const raw = await readFile(new URL(`./${dir}/${name}`, import.meta.url), "utf-8");
+      // A bare LF is any \n not immediately preceded by \r.
+      const bareLf = (raw.match(/(?<!\r)\n/g) ?? []).length;
+      check(`${dir}/${name} is CRLF (cmd.exe silently mangles LF-only scripts)`, bareLf === 0, `${bareLf} bare LF line(s)`);
+    }
+  }
+  check("CRLF check actually found Windows scripts to check", checkedAny);
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────
