@@ -40,8 +40,24 @@ if (!PASSPHRASE || PASSPHRASE.length < 32) {
   process.exit(1);
 }
 
-// sessionId -> { http, child }
+// sessionId -> { http, child, lastSeen }
 const sessions = new Map();
+
+// A session is torn down only on an explicit client DELETE or child death.
+// Claude's connector does neither — it just stops talking — so every phone
+// session used to stay resident for the life of the bridge, holding an
+// orchestrator and (once anything fans out across the assets) its 21 child
+// servers with it: ~1.5GB per warmed session, and 61 of them accumulated in a
+// single bridge lifetime before this was found. Sessions are cheap to
+// re-establish and the connector reopens one on demand, so reaping an idle one
+// costs the user nothing.
+// Overridable so the reaper is testable without a 30-minute test.
+const SESSION_IDLE_MS = Number(process.env.MCP_BRIDGE_SESSION_IDLE_MS ?? 30 * 60 * 1000);
+// Grace period for a child whose initialize never lands. Until
+// onsessioninitialized fires there is no sessionId, so it is absent from the
+// map AND both onclose guards below no-op — nothing in the process holds a
+// reference and only a PID kill would reap it.
+const HANDSHAKE_GRACE_MS = Number(process.env.MCP_BRIDGE_HANDSHAKE_GRACE_MS ?? 60 * 1000);
 
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
@@ -69,10 +85,21 @@ async function openSession() {
   const http = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
     onsessioninitialized: (sessionId) => {
-      sessions.set(sessionId, { http, child });
+      clearTimeout(handshakeTimer);
+      sessions.set(sessionId, { http, child, lastSeen: Date.now() });
       log(`session ${sessionId} opened (${sessions.size} active)`);
     },
   });
+
+  // Closes the child directly rather than via closeSession, which looks the
+  // session up by an id that by definition doesn't exist yet.
+  const handshakeTimer = setTimeout(() => {
+    if (http.sessionId) return;
+    log("initialize never completed — closing orphaned child");
+    void child.close().catch((err) => log("orphan child close failed:", err));
+    void http.close().catch((err) => log("orphan http close failed:", err));
+  }, HANDSHAKE_GRACE_MS);
+  handshakeTimer.unref();
 
   // Pure transport-level relay. Neither side needs to understand the protocol,
   // which is why this survives orchestrator changes without edits.
@@ -180,8 +207,31 @@ app.use(
   })
 );
 
+// Reap sessions the client walked away from. unref'd so it never holds the
+// process open on its own.
+setInterval(() => {
+  const cutoff = Date.now() - SESSION_IDLE_MS;
+  for (const [sessionId, entry] of sessions) {
+    if (entry.lastSeen <= cutoff) {
+      log(`session ${sessionId} idle ${Math.round((Date.now() - entry.lastSeen) / 1000)}s — reaping`);
+      void closeSession(sessionId);
+    }
+  }
+  // Sweep every minute in production; never slower than the TTL itself, so a
+  // short test TTL doesn't sit through a full minute waiting for a pass.
+}, Math.min(60_000, SESSION_IDLE_MS)).unref();
+
+// oldestIdleMin is the number to alert on: it climbing past SESSION_IDLE_MS
+// means the reaper has stopped working.
 app.get("/healthz", (_req, res) => {
-  res.json({ ok: true, sessions: sessions.size, uptime: Math.round(process.uptime()) });
+  const now = Date.now();
+  const idleMins = [...sessions.values()].map((s) => Math.round((now - s.lastSeen) / 60000));
+  res.json({
+    ok: true,
+    sessions: sessions.size,
+    oldestIdleMin: idleMins.length ? Math.max(...idleMins) : 0,
+    uptime: Math.round(process.uptime()),
+  });
 });
 
 // requireBearerAuth returns 401 with a WWW-Authenticate header pointing at the
@@ -198,6 +248,7 @@ app.all("/mcp", requireAuth, async (req, res) => {
     const existing = sessionId ? sessions.get(sessionId) : undefined;
 
     if (existing) {
+      existing.lastSeen = Date.now();
       await existing.http.handleRequest(req, res, req.body);
       return;
     }
