@@ -7,7 +7,7 @@ import * as caseStore from "./case-store.js";
 import * as clientManager from "./client-manager.js";
 import { selectAssets } from "./router.js";
 import { checkAssets, renderHealth } from "./health.js";
-import { synthesizeCase } from "./synthesis.js";
+import { synthesizeCase, renderOutcome } from "./synthesis.js";
 import type { AssetConfig } from "./types.js";
 import { resolve } from "node:path";
 import { stat } from "node:fs/promises";
@@ -504,7 +504,10 @@ server.registerTool(
       if (!caseRecord) throw new Error(`No case with id "${case_id}" found.`);
 
       const logLines = caseRecord.log.map((entry) => {
-        const outcome = entry.error ? `ERROR: ${entry.error}` : JSON.stringify(entry.result);
+        // Render the content TEXT, not JSON.stringify(entry.result): the JSON
+        // envelope + newline-escaping is ~30-40% more tokens for zero signal and
+        // is barely readable. renderOutcome preserves errors and marks non-text.
+        const outcome = renderOutcome(entry);
         return `  [${entry.timestamp}] ${entry.asset}.${entry.tool}(${JSON.stringify(entry.arguments)}) -> ${outcome}`;
       });
 

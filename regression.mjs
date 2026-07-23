@@ -32,7 +32,7 @@ import { selectAssets } from "./dist/router.js";
 import { needsResearchShape } from "./dist/router.js";
 import { suggestTool, describeUnknownTool, nameSimilarity } from "./dist/tool-suggest.js";
 import { checkAssets, renderHealth } from "./dist/health.js";
-import { synthesizeCase, isFailed } from "./dist/synthesis.js";
+import { synthesizeCase, isFailed, renderOutcome } from "./dist/synthesis.js";
 import { isFailed as ovIsFailed, failureMessage as ovFailureMessage } from "./overseer-mcp/dist/failure.js";
 // New knowledge assets — their reverse-index resolvers (same pattern as polymath's title index).
 import { DOMAINS, resolveDomain } from "./curiosity-mcp/dist/domains.js";
@@ -679,6 +679,15 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
   check("synthesis counts an isError result as an errored call", /1 call\(s\) errored/.test(out), out);
   check("synthesis does not call a failed call 'a dossier'", !out.includes("e.g. a dossier"), out);
   check("synthesis does not lift the error payload into MERGED KEY POINTS", !out.includes("calculate_dti"), out);
+
+  // renderOutcome (case_report): content text, not a JSON envelope; errors kept.
+  const okEntry = { asset: "research", tool: "research", arguments: {}, result: { content: [{ type: "text", text: "BOTTOM LINE: found it." }] }, timestamp: "x" };
+  const ro = renderOutcome(okEntry);
+  check("renderOutcome: returns the content TEXT, not JSON", ro === "BOTTOM LINE: found it.", ro);
+  check("renderOutcome: does not emit the JSON envelope", !ro.includes("content") && !ro.includes("\\n"), ro);
+  check("renderOutcome: a thrown error shows ERROR", renderOutcome(thrown).startsWith("ERROR:"));
+  check("renderOutcome: an isError result shows ERROR (not silent)", renderOutcome(returned).startsWith("ERROR:"), renderOutcome(returned));
+  check("renderOutcome: a non-text success is marked, not dumped", renderOutcome({ asset: "a", tool: "t", arguments: {}, result: { content: [{ type: "image", data: "..." }] }, timestamp: "x" }) === "[non-text result]");
 
   // The overseer's own copy must agree — the two packages cannot share code.
   check("overseer isFailed agrees on a thrown error", ovIsFailed(thrown));

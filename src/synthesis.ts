@@ -50,6 +50,27 @@ function resultText(entry: CaseTaskLog): string {
   return "";
 }
 
+/**
+ * Readable rendering of a log entry's outcome for case_report — the content
+ * TEXT (or the failure reason), instead of JSON.stringify(entry.result). The
+ * JSON envelope spends tokens on {"content":[{"type":"text","text":...}]}
+ * wrappers and doubles every real newline to "\n" for zero added signal, and it
+ * is barely human-readable. A non-text result (image/resource block) is marked
+ * rather than dumped.
+ */
+export function renderOutcome(entry: CaseTaskLog): string {
+  if (entry.error) return `ERROR: ${entry.error}`;
+  if (isFailed(entry)) {
+    const r = entry.result as Record<string, unknown> | undefined;
+    const content = r?.content as Array<{ text?: string }> | undefined;
+    const text = Array.isArray(content)
+      ? content.map((b) => (typeof b?.text === "string" ? b.text : "")).filter(Boolean).join("\n")
+      : "";
+    return `ERROR: ${text || "asset reported an error"}`;
+  }
+  return resultText(entry) || "[non-text result]";
+}
+
 function bottomLines(text: string): string[] {
   return text
     .split("\n")

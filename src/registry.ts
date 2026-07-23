@@ -1,10 +1,33 @@
+import { stat } from "node:fs/promises";
 import { REGISTRY_PATH } from "./paths.js";
 import { withFileLock } from "./file-lock.js";
 import { loadJsonArray, saveJsonArray } from "./json-store.js";
 import type { AssetConfig } from "./types.js";
 
+// The registry is read on nearly every tool call (open_case, task_asset,
+// assign_asset, …) but changes only on recruit/update/retire. Cache the parsed
+// array and gate it on the file's mtime: a microsecond stat() replaces a 37 KB
+// readFile+JSON.parse whenever nothing has changed. This is cross-process safe
+// because saveJsonArray writes atomically via temp-file+rename, which bumps
+// mtime — so the bridge's separate orchestrator process sees the other's writes
+// on the very next load. Callers get a structuredClone so a mutation (addAsset
+// pushes, updateAsset edits fields) can never corrupt the shared cache.
+let registryCache: { mtimeMs: number; assets: AssetConfig[] } | null = null;
+
 export async function loadRegistry(): Promise<AssetConfig[]> {
-  return loadJsonArray<AssetConfig>(REGISTRY_PATH);
+  let mtimeMs: number;
+  try {
+    ({ mtimeMs } = await stat(REGISTRY_PATH));
+  } catch {
+    // File missing (first run) — let the loader create it; don't cache.
+    return loadJsonArray<AssetConfig>(REGISTRY_PATH);
+  }
+  if (registryCache && registryCache.mtimeMs === mtimeMs) {
+    return structuredClone(registryCache.assets);
+  }
+  const assets = await loadJsonArray<AssetConfig>(REGISTRY_PATH);
+  registryCache = { mtimeMs, assets };
+  return structuredClone(assets);
 }
 
 async function saveRegistry(assets: AssetConfig[]): Promise<void> {

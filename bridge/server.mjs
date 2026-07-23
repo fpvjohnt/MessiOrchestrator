@@ -272,7 +272,14 @@ setInterval(() => {
 // That exercises the real dist/index.js WITHOUT the 22-asset fleet, because the
 // orchestrator connects to assets lazily — listing its own tools spawns none of
 // them. Result is cached so repeated /healthz polls don't each pay for a spawn.
-const DEEP_PROBE_TTL_MS = 20_000;
+//
+// The TTL MUST exceed the supervisor's deep-poll interval or the cache never
+// helps its only caller: at 20s < the supervisor's 30s poll, every tick found
+// the cache already expired and spawned a fresh orchestrator — ~2,880 spawns/day
+// purely for health. 45s serves the supervisor's every-other-poll from a warm
+// answer while still catching a broken build within one extra tick; with
+// FAILURES_BEFORE_RESTART=2 (~60s to act) that costs no real detection latency.
+const DEEP_PROBE_TTL_MS = 45_000;
 const DEEP_PROBE_TIMEOUT_MS = 12_000;
 let deepProbeCache = { at: 0, ok: null, detail: "not yet probed" };
 
