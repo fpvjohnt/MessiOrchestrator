@@ -165,7 +165,10 @@ Add it as a server pointing at the built entrypoint, e.g. in a
   edit an asset's config in place, toggle `fallback`, or set `reactivate: true`
   to bring a retired asset back. Drops any live connection so the next call
   reconnects with the new config.
-- `list_assets()` — list every asset and its status.
+- `list_assets(status?, query?, verbose?)` — list assets, one condensed line
+  each (full description + tags only with `verbose: true`). Defaults to active
+  assets; pass `status: "all"` to include retired ones, or `query` to filter
+  by name/description/tag substring.
 - `debrief_asset(name)` — connect to an asset and list the tools it exposes.
 - `retire_asset(name)` — stop routing work to an asset and disconnect it.
 - `open_case(objective, preferred_assets?)` — open a case. Without
@@ -184,7 +187,9 @@ Add it as a server pointing at the built entrypoint, e.g. in a
   embedded resources) are forwarded as-is rather than re-encoded as JSON
   text, so nothing but a small prefix line is added.
 - `case_report(case_id)` — compile the full dossier for a case.
-- `list_cases()` — list all cases and their status.
+- `list_cases(status?, query?, limit?)` — list cases, most recent first.
+  Defaults to the 20 most recent across all statuses; pass `status`/`query` to
+  narrow, or a higher `limit` (max 200) to look further back.
 - `close_case(case_id, summary?, outcome?)` — close a case with an optional
   summary and an optional `outcome` (`resolved` / `partial` / `unresolved` /
   `misrouted`) — the feedback signal `overseer`'s `outcome_report` aggregates

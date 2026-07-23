@@ -76,17 +76,23 @@ server.registerTool(
       const { results, providerErrors } = await multiSearch(query, providers, max_per_provider);
       if (results.length === 0) {
         return textResult(
-          `No results for "${query}".` +
+          `BOTTOM LINE: no results for "${query}".\n\n` +
+            `No results for "${query}".` +
             (providerErrors.length ? `\nProvider errors: ${providerErrors.join("; ")}` : "") +
             `\nTry rephrasing — different terms, an error code in quotes, or the underlying concept instead of the symptom.`
         );
       }
+      // synthesize_case (src/synthesis.ts) extracts a leading "BOTTOM LINE:" line
+      // as this call's headline — without it, every search result falls back to
+      // the caller re-reading the full result list instead of the one-line digest.
+      const top = results[0];
+      const bottomLine = `BOTTOM LINE: ${results.length} result(s) for "${query}" — top: ${top.title} (${top.corroboration}x corroborated) ${top.url}`;
       const lines = results.map(
         (r) =>
           `- ${r.title}\n  ${r.url}\n  [${r.corroboration}x: ${r.providers.join(", ")}] ${r.snippet}`.trimEnd()
       );
       const footer = providerErrors.length ? `\n\nProvider errors: ${providerErrors.join("; ")}` : "";
-      return textResult(lines.join("\n") + footer);
+      return textResult(`${bottomLine}\n\n${lines.join("\n")}${footer}`);
     } catch (err) {
       return errorResult(err);
     }
@@ -109,10 +115,14 @@ server.registerTool(
   async ({ url, max_chars }) => {
     try {
       const page = await fetchPage(url, max_chars);
+      // See the "search" tool above for why every tool here opens with a
+      // BOTTOM LINE line — it's what synthesize_case extracts as this call's
+      // headline instead of falling back to the full fetched page text.
+      const bottomLine = `BOTTOM LINE: fetched "${page.title ?? url}" — ${page.text.length} chars${page.truncated ? ` (truncated to ${max_chars})` : ""}.`;
       const header = [
+        bottomLine,
         page.title ? `# ${page.title}` : null,
         page.finalUrl !== url ? `(redirected to ${page.finalUrl})` : null,
-        page.truncated ? `(truncated to ${max_chars} chars)` : null,
       ]
         .filter(Boolean)
         .join("\n");
@@ -155,7 +165,8 @@ server.registerTool(
 
       if (dossier.sources.length === 0) {
         return textResult(
-          `RESEARCH DOSSIER — no sources found\nQuestion: ${question}\nProviders used: ${dossier.providersUsed.join(", ")}` +
+          `BOTTOM LINE: no sources found for "${question}".\n\n` +
+            `RESEARCH DOSSIER — no sources found\nQuestion: ${question}\nProviders used: ${dossier.providersUsed.join(", ")}` +
             (dossier.providerErrors.length ? `\nProvider errors: ${dossier.providerErrors.join("; ")}` : "") +
             `\n\nNext moves: rephrase the question (exact error text in quotes, or the general concept), ` +
             `try a specific provider, or fetch a known authoritative URL directly with fetch_page.`
@@ -177,7 +188,17 @@ server.registerTool(
             .join("\n")
         : "";
 
+      // The most-used asset in the whole orchestrator (fallback: true — tasked on
+      // nearly every unmatched question) was the one place this convention was
+      // missing, so synthesize_case degraded to "(no headline extracted)" on most
+      // cases and callers had to re-read the full ~18KB dossier instead of the
+      // cheap digest. This line is what fixes that.
+      const topSource = dossier.sources[0];
+      const bottomLine = `BOTTOM LINE: found ${dossier.sources.length} corroborated source(s) for "${question}" — top: ${topSource.title} (${topSource.corroboration}x) ${topSource.url}`;
+
       const report = [
+        bottomLine,
+        ``,
         `RESEARCH DOSSIER`,
         `Question: ${question}`,
         `Providers used: ${dossier.providersUsed.join(", ")}`,
@@ -210,6 +231,20 @@ async function main() {
   // client-exit handshake; without this the process lingers on Windows.
   process.stdin.on("end", () => process.exit(0));
   process.stdin.on("close", () => process.exit(0));
+
+  // Parent-death watchdog: if our parent (the orchestrator) dies WITHOUT cleanly
+  // closing our stdin — a hard kill, crash, or abrupt reboot — the stdin-EOF
+  // handlers above may never fire and we would linger as an orphan. Poll the
+  // parent's liveness and self-terminate when it is gone, so residual process
+  // trees can't pile up across reboots. unref() so this timer never keeps us alive.
+  const __parentPid = process.ppid;
+  setInterval(() => {
+    try {
+      process.kill(__parentPid, 0); // signal 0 = liveness probe; throws if gone
+    } catch {
+      process.exit(0);
+    }
+  }, 5000).unref();
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

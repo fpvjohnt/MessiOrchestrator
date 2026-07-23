@@ -179,21 +179,60 @@ server.registerTool(
   "list_assets",
   {
     title: "List Assets",
-    description: "List all registered assets, including retired ones, with their tags and status.",
-    inputSchema: {},
+    description:
+      "List registered assets — one condensed line each by default (name, status, a short blurb, tag count). " +
+      "Defaults to active assets only. Pass verbose:true for full descriptions and complete tag lists, or use " +
+      "debrief_asset for one asset's actual tools.",
+    inputSchema: {
+      status: z
+        .enum(["active", "retired", "all"])
+        .default("active")
+        .describe('Which assets to include (default "active" — pass "all" to include retired ones too).'),
+      query: z.string().optional().describe("Case-insensitive substring match against name, description, or tags."),
+      verbose: z
+        .boolean()
+        .default(false)
+        .describe("Show full descriptions and complete tag lists instead of a condensed line."),
+    },
   },
-  async () => {
-    const assets = await registry.listAssets();
-    if (assets.length === 0) {
-      return textResult("No assets recruited yet. Use recruit_asset to register an MCP server.");
+  async ({ status, query, verbose }) => {
+    const all = await registry.listAssets();
+    let matching = status === "all" ? all : all.filter((a) => a.status === status);
+    if (query) {
+      const q = query.toLowerCase();
+      matching = matching.filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          a.description.toLowerCase().includes(q) ||
+          a.tags.some((t) => t.toLowerCase().includes(q))
+      );
     }
-    const lines = assets.map(
-      (a) =>
-        `- ${a.name} [${a.status}${a.fallback ? ", fallback" : ""}] (${a.transport}) — ${a.description} — tags: ${
+    if (matching.length === 0) {
+      return textResult(
+        all.length === 0
+          ? "No assets recruited yet. Use recruit_asset to register an MCP server."
+          : "No assets match that filter."
+      );
+    }
+    const lines = matching.map((a) => {
+      const flags = `${a.status}${a.fallback ? ", fallback" : ""}`;
+      if (verbose) {
+        return `- ${a.name} [${flags}] (${a.transport}) — ${a.description} — tags: ${
           a.tags.length ? a.tags.join(", ") : "(none)"
-        }`
-    );
-    return textResult(lines.join("\n"));
+        }`;
+      }
+      const blurb = a.description.length > 90 ? `${a.description.slice(0, 90)}…` : a.description;
+      const tagCount = a.tags.length ? ` — ${a.tags.length} tags` : "";
+      return `- ${a.name} [${flags}] (${a.transport}) — ${blurb}${tagCount}`;
+    });
+    const footer =
+      status !== "all" || query
+        ? `\n\n${matching.length} of ${all.length} total asset(s) shown. status:"all" clears the status filter.` +
+          (verbose ? "" : " verbose:true for full descriptions.")
+        : verbose
+          ? ""
+          : `\n\nverbose:true for full descriptions and complete tag lists.`;
+    return textResult(lines.join("\n") + footer);
   }
 );
 
@@ -459,14 +498,37 @@ server.registerTool(
   "list_cases",
   {
     title: "List Cases",
-    description: "List all cases with their status and objective.",
-    inputSchema: {},
+    description:
+      "List cases with their status and objective, most recent first. Defaults to the 20 most recent " +
+      "across all statuses — pass status/query to narrow, or a higher limit to look further back.",
+    inputSchema: {
+      status: z.enum(["open", "closed"]).optional().describe("Only cases in this status."),
+      query: z.string().optional().describe("Case-insensitive substring match against the objective."),
+      limit: z.number().int().positive().max(200).default(20).describe("Max cases to return (default 20, max 200)."),
+    },
   },
-  async () => {
-    const cases = await caseStore.listCases();
-    if (cases.length === 0) return textResult("No cases opened yet.");
-    const lines = cases.map((c) => `- ${c.id} [${c.status}] ${c.objective}`);
-    return textResult(lines.join("\n"));
+  async ({ status, query, limit }) => {
+    const all = await caseStore.listCases();
+    let matching = status ? all.filter((c) => c.status === status) : all;
+    if (query) {
+      const q = query.toLowerCase();
+      matching = matching.filter((c) => c.objective.toLowerCase().includes(q));
+    }
+    if (matching.length === 0) {
+      return textResult(all.length === 0 ? "No cases opened yet." : "No cases match that filter.");
+    }
+    // Cases are stored oldest-first; reverse so a limited view surfaces recent
+    // activity instead of silently returning the oldest cases in the store.
+    const newestFirst = [...matching].reverse();
+    const shown = newestFirst.slice(0, limit);
+    const lines = shown.map((c) => `- ${c.id} [${c.status}] ${c.objective}`);
+    const footer =
+      matching.length > shown.length
+        ? `\n\nShowing ${shown.length} of ${matching.length} matching case(s) (${all.length} total). Increase limit, or narrow with status/query.`
+        : matching.length !== all.length
+          ? `\n\n${matching.length} matching case(s) of ${all.length} total.`
+          : "";
+    return textResult(lines.join("\n") + footer);
   }
 );
 
@@ -546,6 +608,21 @@ async function main() {
   // especially on Windows where SIGTERM delivery isn't supported.
   process.stdin.on("end", () => void shutdownAndExit());
   process.stdin.on("close", () => void shutdownAndExit());
+
+  // Parent-death watchdog: if Claude (our parent) dies WITHOUT cleanly closing
+  // our stdin — a hard kill, crash, or abrupt reboot — the stdin-EOF handlers
+  // above may never fire, and we would linger holding a whole tree of asset
+  // child processes as orphans. Poll the parent's liveness and, when it's gone,
+  // shut down gracefully (disconnectAll kills the children) so residual process
+  // trees can't pile up across reboots. unref() so this timer never keeps us alive.
+  const parentPid = process.ppid;
+  setInterval(() => {
+    try {
+      process.kill(parentPid, 0); // signal 0 = liveness probe; throws if gone
+    } catch {
+      void shutdownAndExit();
+    }
+  }, 5000).unref();
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
