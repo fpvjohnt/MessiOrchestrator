@@ -27,6 +27,10 @@ const PACKAGES = [
   "faiths-mcp",
   "loop-mcp",
   "openai-mcp",
+  "aiforge-mcp",
+  "gitforge-mcp",
+  "promptcraft-mcp",
+  "apiforge-mcp",
 ];
 
 function run(cmd, cwd) {

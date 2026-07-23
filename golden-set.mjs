@@ -125,5 +125,34 @@ export const GOLDEN = [
   { q: "how does a lawyer use ChatGPT without getting sanctioned", expect: ["openai"], alsoOk: ["lawguide"], note: "tool-usage question; lawguide owns the legal question itself" },
   { q: "how do real estate agents write listings with ChatGPT", expect: ["openai"], alsoOk: ["homebuyer"], note: "Fair Housing trap is a tool-usage matter; homebuyer owns the market question" },
   { q: "what is the difference between ChatGPT Chat and Work mode", expect: ["openai"] },
-  { q: "should I put my preferences in custom instructions or the prompt", expect: ["openai"] },
+  { q: "should I put my preferences in custom instructions or the prompt", expect: ["openai"], alsoOk: ["promptcraft"], note: "BOUNDARY: 'custom instructions' is a ChatGPT feature (openai); 'the prompt' pulls the promptcraft asset — keyword routing can't fully disambiguate. Documented ceiling case, like black-holes/employer-pay." },
+
+  // aiforge (AI/ML engineering CRAFT — the code/frameworks/science, vs loop's architecture)
+  { q: "how do I fine-tune a Hugging Face model with LoRA", expect: ["aiforge"] },
+  { q: "how do I quantize an open model to run it locally", expect: ["aiforge"] },
+  { q: "what Python libraries do I need for machine learning", expect: ["aiforge"] },
+  { q: "how do embeddings and vector search actually work", expect: ["aiforge"] },
+  { q: "how does a tokenizer split text into subword tokens", expect: ["aiforge"], note: "tokenization is aiforge's craft/science ('language model' phrasing would pull linguistics)" },
+  { q: "my LangChain code uses AgentExecutor and it says deprecated", expect: ["aiforge"] },
+  { q: "what is the difference between RAG and fine-tuning", expect: ["aiforge"], alsoOk: ["loop"], note: "RAG pulls loop; the fine-tune-vs-RAG-vs-prompt decision is aiforge's craft" },
+
+  // gitforge (Git & GitHub)
+  { q: "how do I undo my last git commit", expect: ["gitforge"] },
+  { q: "what does git reflog do and how do I recover lost commits", expect: ["gitforge"] },
+  { q: "how do I fix a merge conflict", expect: ["gitforge"] },
+  { q: "how do I set up a GitHub Actions workflow for CI", expect: ["gitforge"] },
+  { q: "what is the difference between git merge and rebase", expect: ["gitforge"] },
+
+  // promptcraft (prompt engineering — vendor-neutral technique)
+  { q: "how do I write a good few-shot prompt", expect: ["promptcraft"] },
+  { q: "should I use chain of thought prompting for this", expect: ["promptcraft"] },
+  { q: "how should I prompt a reasoning model differently", expect: ["promptcraft"] },
+  { q: "why is my prompt giving inconsistent output", expect: ["promptcraft"], alsoOk: ["aiforge"], note: "prompt reliability is promptcraft; 'output/eval' can pull aiforge" },
+
+  // apiforge (AI APIs & Postman)
+  { q: "how do I call an LLM API in Postman", expect: ["apiforge"] },
+  { q: "how do I test an API endpoint and assert the response", expect: ["apiforge"] },
+  { q: "why am I getting a 401 error from the API", expect: ["apiforge"] },
+  { q: "how do I handle rate limiting and retries when calling an API", expect: ["apiforge"] },
+  { q: "how do I consume a streaming SSE response from an AI API", expect: ["apiforge"] },
 ];

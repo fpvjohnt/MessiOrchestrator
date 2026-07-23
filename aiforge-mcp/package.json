@@ -1,0 +1,22 @@
+{
+  "name": "aiforge-mcp",
+  "version": "0.1.0",
+  "description": "AI/ML Engineering Craft MCP: the hands-on plumbing beneath any AI app — Python for AI (numpy/pandas/pytorch, environments), foundation-model integration (inference, structured output, cost/latency, evals, guardrails), Hugging Face & LangChain as code (Transformers, PEFT/LoRA/QLoRA, serving/quantization, LCEL/create_agent, RAG), and LLM/NLP fundamentals (tokenization, embeddings, transformers, fine-tune-vs-RAG-vs-prompt, decoding, classic NLP). explain_topic/build_it/debug/myth_vs_reality plus check_practice → practice_verdict for fast-moving specifics. Owns the CRAFT; defers agent architecture to loop and OpenAI-platform specifics to openai. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "aiforge-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}

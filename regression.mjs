@@ -20,6 +20,16 @@ import { synthesizeCase } from "./dist/synthesis.js";
 import { DOMAINS, resolveDomain } from "./curiosity-mcp/dist/domains.js";
 import { PRIMITIVES, resolvePrimitive } from "./openai-mcp/dist/primitives.js";
 import { ROLES, resolveRole } from "./openai-mcp/dist/roles.js";
+import { BUILDERS, resolveBuilder, howTheyBuild } from "./openai-mcp/dist/builders.js";
+import { TOPICS, resolveTopic, explainTopic } from "./aiforge-mcp/dist/topics.js";
+import { buildIt as afBuildIt, debug as afDebug, mythVsReality as afMyth } from "./aiforge-mcp/dist/toolkit.js";
+import { checkPractice as afCheckPractice, practiceVerdict as afPracticeVerdict } from "./aiforge-mcp/dist/verify.js";
+import { TOPICS as GF_TOPICS, resolveTopic as gfResolve, explainTopic as gfExplain } from "./gitforge-mcp/dist/topics.js";
+import { howTo as gfHowTo, debug as gfDebug, mythVsReality as gfMyth } from "./gitforge-mcp/dist/toolkit.js";
+import { TOPICS as PC_TOPICS, resolveTopic as pcResolve, explainTopic as pcExplain } from "./promptcraft-mcp/dist/topics.js";
+import { buildPrompt as pcBuild, improvePrompt as pcImprove, mythVsReality as pcMyth } from "./promptcraft-mcp/dist/toolkit.js";
+import { TOPICS as AP_TOPICS, resolveTopic as apResolve, explainTopic as apExplain } from "./apiforge-mcp/dist/topics.js";
+import { howTo as apHowTo, debug as apDebug, mythVsReality as apMyth } from "./apiforge-mcp/dist/toolkit.js";
 import { SUBJECTS, resolveSubject } from "./education-mcp/dist/subjects.js";
 import { AREAS, resolveArea } from "./communication-mcp/dist/areas.js";
 import { SPORTS, resolveSport } from "./sports-mcp/dist/sports.js";
@@ -284,6 +294,11 @@ const KNOWLEDGE = [
   ["loop-blocks", BUILDING_BLOCKS, resolveBlock],
   ["openai-primitives", PRIMITIVES, resolvePrimitive],
   ["openai-roles", ROLES, resolveRole],
+  ["openai-builders", BUILDERS, resolveBuilder],
+  ["aiforge-topics", TOPICS, resolveTopic],
+  ["gitforge-topics", GF_TOPICS, gfResolve],
+  ["promptcraft-topics", PC_TOPICS, pcResolve],
+  ["apiforge-topics", AP_TOPICS, apResolve],
 ];
 for (const [name, MAP, resolve] of KNOWLEDGE) {
   const entries = Object.entries(MAP);
@@ -342,6 +357,35 @@ const TOOL_SMOKE = [
   ["loop.model_requirements", modelRequirements()],
   ["loop.check_practice", checkPractice("langgraph current best practice")],
   ["loop.practice_verdict", practiceVerdict("langgraph", "docs current, few independent evals")],
+  ["openai.how_they_build (map)", howTheyBuild()],
+  ["openai.how_they_build (fde)", howTheyBuild("forward deployed engineer")],
+  ["openai.how_they_build (agent post-training)", howTheyBuild("agent post training")],
+  ["openai.how_they_build (quant)", howTheyBuild("quantitative analyst")],
+  ["aiforge.explain_topic (map)", explainTopic()],
+  ["aiforge.explain_topic (lora)", explainTopic("lora")],
+  ["aiforge.explain_topic (tokenization)", explainTopic("tokenization")],
+  ["aiforge.build_it (rag)", afBuildIt("answer questions about our internal docs")],
+  ["aiforge.build_it (classify)", afBuildIt("classify millions of support tickets by topic")],
+  ["aiforge.debug (oom)", afDebug("cuda out of memory while fine-tuning")],
+  ["aiforge.debug (langchain deprecated)", afDebug("AgentExecutor no attribute import error")],
+  ["aiforge.myth_vs_reality", afMyth()],
+  ["aiforge.check_practice", afCheckPractice("langchain create_agent current api")],
+  ["aiforge.practice_verdict", afPracticeVerdict("langchain", "docs confirm create_agent; AgentExecutor deprecated")],
+  ["gitforge.explain_topic (map)", gfExplain()],
+  ["gitforge.explain_topic (rebase)", gfExplain("rebase")],
+  ["gitforge.how_to (recover)", gfHowTo("recover my lost work")],
+  ["gitforge.debug (detached)", gfDebug("I'm in detached HEAD")],
+  ["gitforge.myth_vs_reality", gfMyth()],
+  ["promptcraft.explain_topic (map)", pcExplain()],
+  ["promptcraft.explain_topic (fewshot)", pcExplain("few-shot")],
+  ["promptcraft.build_prompt", pcBuild("classify support tickets by topic")],
+  ["promptcraft.improve_prompt", pcImprove("summarize this well")],
+  ["promptcraft.myth_vs_reality", pcMyth()],
+  ["apiforge.explain_topic (map)", apExplain()],
+  ["apiforge.explain_topic (streaming)", apExplain("sse")],
+  ["apiforge.how_to (call llm)", apHowTo("call an llm api")],
+  ["apiforge.debug (401)", apDebug("getting a 401 unauthorized")],
+  ["apiforge.myth_vs_reality", apMyth()],
 ];
 for (const [label, out] of TOOL_SMOKE) {
   check(`tool renders: ${label}`, typeof out === "string" && out.length > 60, `len ${out?.length ?? "n/a"}`);
@@ -359,6 +403,61 @@ check("loop building_blocks map lists all six blocks", ["Connectors", "Automatio
 check("loop building_blocks ties Connectors to MCP collection", buildingBlocks("connectors").toLowerCase().includes("mcp"));
 check("loop building_blocks subagents = maker ≠ checker", buildingBlocks("subagents").toLowerCase().includes("maker") && buildingBlocks("subagents").toLowerCase().includes("checker"));
 check("loop model_requirements makes tool-calling the #1 requirement", modelRequirements().toLowerCase().includes("tool-calling") && modelRequirements().includes("#1"));
+
+// openai builders (the 19 OpenAI roles) — content guarantees that lock the
+// researched facts so they can't silently drift.
+check("openai builders: map lists all 19 roles", Object.keys(BUILDERS).length === 19);
+check("openai builders: FDE resolves via 'fde' alias", resolveBuilder("fde") === "forward_deployed_engineer");
+check("openai builders: FDE is accountable prod code, not sales-eng", howTheyBuild("fde").toLowerCase().includes("production") && howTheyBuild("fde").toLowerCase().includes("sales engineering"));
+check("openai builders: quant is safety/SIA, explicitly NOT a trading quant", howTheyBuild("quant").toLowerCase().includes("not a finance") && howTheyBuild("quant").toLowerCase().includes("sia"));
+check("openai builders: artifact research = work products (docs/decks/sheets)", howTheyBuild("artifacts").toLowerCase().includes("work product") && howTheyBuild("artifacts").toLowerCase().includes("deck"));
+check("openai builders: SWE agent-infra beats plain SWE (longest-key match)", resolveBuilder("software engineer agent infrastructure") === "software_engineer_agent_infrastructure");
+check("openai builders: every role carries a trap + charter", Object.values(BUILDERS).every((b) => b.trap.length > 20 && b.charter.length > 20));
+check("openai builders: map defers live facts to check_openai", howTheyBuild().toLowerCase().includes("check_openai"));
+check("openai builders: unknown role → honest 'not sure'", howTheyBuild("astronaut").toLowerCase().includes("not sure"));
+
+// aiforge (AI/ML engineering craft) — content guarantees + the craft-vs-loop
+// scope line + the fast-moving facts locked so they can't silently rot.
+check("aiforge: 26 topics across 4 areas", Object.keys(TOPICS).length === 26);
+check("aiforge: python deepened to 8 topics (testing/typing/debugging added)", Object.values(TOPICS).filter((t) => t.area === "python").length === 8);
+check("aiforge: all 4 areas present", new Set(Object.values(TOPICS).map((t) => t.area)).size === 4);
+check("aiforge: lora resolves to hf_finetuning", resolveTopic("lora") === "hf_finetuning");
+check("aiforge: fine-tune-vs-rag teaches facts→RAG, not fine-tune", explainTopic("finetune_vs_rag_vs_prompt").toLowerCase().includes("rag") && explainTopic("finetune_vs_rag_vs_prompt").toLowerCase().includes("fact"));
+check("aiforge: build_it steers a docs bot to RAG, not fine-tuning", afBuildIt("bot to answer questions about our internal docs").toLowerCase().includes("rag") && afBuildIt("bot to answer questions about our internal docs").toLowerCase().includes("not fine-tuning"));
+check("aiforge: myth debunks 'fine-tune so it knows our facts'", afMyth().toLowerCase().includes("fine-tun") && afMyth().toLowerCase().includes("rag the facts"));
+check("aiforge: langchain topic reflects the 1.0 deprecation (create_agent)", explainTopic("langchain").toLowerCase().includes("create_agent") && explainTopic("langchain").toLowerCase().includes("deprecated"));
+check("aiforge: debug catches deprecated LangChain imports", afDebug("AgentExecutor import error").toLowerCase().includes("create_agent"));
+check("aiforge: check_practice refuses to answer from memory", afCheckPractice("x").toLowerCase().includes("don't answer this from memory"));
+check("aiforge: scope line defers agent architecture to loop", explainTopic().toLowerCase().includes("loop") && explainTopic("langchain_vs_langgraph").toLowerCase().includes("loop"));
+check("aiforge: every topic carries pitfalls + handoff", Object.values(TOPICS).every((t) => t.pitfalls.length > 0 && t.handoff.length > 10));
+check("aiforge: unknown topic → honest 'not sure'", explainTopic("underwater basket weaving").toLowerCase().includes("not sure"));
+
+// gitforge (Git & GitHub) — content guarantees + the safety rules locked.
+check("gitforge: 13 topics across 2 areas", Object.keys(GF_TOPICS).length === 13);
+check("gitforge: all 2 areas present", new Set(Object.values(GF_TOPICS).map((t) => t.area)).size === 2);
+check("gitforge: reflog resolves to undo/recovery", gfResolve("reflog") === "git_undo_recovery");
+check("gitforge: how_to(recover) leads with reflog", gfHowTo("recover lost work").toLowerCase().includes("reflog"));
+check("gitforge: myth debunks git==github", gfMyth().toLowerCase().includes("git and github are the same") && gfMyth().toLowerCase().includes("hosting platform"));
+check("gitforge: committed-secret debug says ROTATE", gfDebug("I committed an api key").toLowerCase().includes("rotate"));
+check("gitforge: unknown topic → honest 'not sure'", gfExplain("quantum knitting").toLowerCase().includes("not sure"));
+
+// promptcraft (Prompt Engineering) — content + the reasoning-model caveat locked.
+check("promptcraft: 15 topics across 3 areas", Object.keys(PC_TOPICS).length === 15);
+check("promptcraft: all 3 areas present", new Set(Object.values(PC_TOPICS).map((t) => t.area)).size === 3);
+check("promptcraft: CoT topic warns to SKIP it for reasoning models", pcExplain("chain of thought").toLowerCase().includes("reasoning model") && pcExplain("chain of thought").toLowerCase().includes("skip"));
+check("promptcraft: improve_prompt flags a vague prompt", pcImprove("summarize this well").toLowerCase().includes("vague"));
+check("promptcraft: myth debunks 'longer prompts are better'", pcMyth().toLowerCase().includes("longer"));
+check("promptcraft: reasoning_models topic exists and resolves", pcResolve("reasoning models") === "reasoning_models");
+check("promptcraft: unknown topic → honest 'not sure'", pcExplain("interpretive dance").toLowerCase().includes("not sure"));
+
+// apiforge (AI API & Postman) — content + the two rules locked.
+check("apiforge: 15 topics across 3 areas", Object.keys(AP_TOPICS).length === 15);
+check("apiforge: all 3 areas present", new Set(Object.values(AP_TOPICS).map((t) => t.area)).size === 3);
+check("apiforge: auth topic says key goes in header not URL", apExplain("api auth").toLowerCase().includes("never in the url") || apExplain("api auth").toLowerCase().includes("not the url") || apExplain("authentication").toLowerCase().includes("header"));
+check("apiforge: myth debunks 'a 200 means it worked'", apMyth().toLowerCase().includes("200") && apMyth().toLowerCase().includes("body"));
+check("apiforge: 401 debug checks auth header + variable resolved", apDebug("401 unauthorized").toLowerCase().includes("authorization") || apDebug("401 unauthorized").toLowerCase().includes("apikey"));
+check("apiforge: testing AI endpoints = properties not exact text", apExplain("testing_ai_endpoints").toLowerCase().includes("propert") && apExplain("testing_ai_endpoints").toLowerCase().includes("not"));
+check("apiforge: unknown topic → honest 'not sure'", apExplain("underwater welding").toLowerCase().includes("not sure"));
 
 // ── 15. Reference-store logic paths (curiosity, education, government) ────────
 // The previously-untested trio: get_reference / list_stale_references /

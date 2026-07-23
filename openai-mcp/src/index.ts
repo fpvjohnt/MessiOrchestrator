@@ -5,6 +5,7 @@ import { z } from "zod";
 import { explainPrimitive, startHere } from "./primitives.js";
 import { pickPrimitive, debugOpenai, migrationCheck, mythVsReality } from "./toolkit.js";
 import { howTheyUseIt } from "./roles.js";
+import { howTheyBuild } from "./builders.js";
 import { checkOpenai, openaiVerdict } from "./verify.js";
 
 const server = new McpServer({ name: "openai", version: "0.1.0" });
@@ -74,6 +75,30 @@ server.registerTool(
   async ({ role }) => {
     try {
       return textResult(howTheyUseIt(role));
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.registerTool(
+  "how_they_build",
+  {
+    title: "What the People Who Build & Run OpenAI Actually Do",
+    description:
+      "The builder lens: name an OpenAI engineering/research/safety/data/ops role — Software Engineer, Data Engineer, Data Scientist " +
+      "(Business or Infrastructure), Platform Engineering, Site Reliability Engineer, Software Engineer (Agent Infrastructure), ChatGPT " +
+      "Performance Engineer, AI Deployment Engineer, Forward Deployed Engineer (FDE), AI Support Engineer, Technical Threat Investigator, " +
+      "Technical Intelligence Analyst, Quantitative (Intelligence) Analyst, Agent Post-Training, Agent Post-Training Research, Artifact " +
+      "Research, Workday Engineer, Strategy and Operations — and get their charter, what they actually do day to day, the real stack, what " +
+      "separates a great one, and the trap (what outsiders get wrong about the role). Grounded in OpenAI's public role families as of 2026; " +
+      "anything live (a specific opening, comp, a reorg) routes check_openai → openai_verdict. Omit 'role' for the full map. This is the " +
+      "mirror of how_they_use_it: how OpenAI is BUILT, not how it's used.",
+    inputSchema: { role: lookupKey.optional() },
+  },
+  async ({ role }) => {
+    try {
+      return textResult(howTheyBuild(role));
     } catch (err) {
       return errorResult(err);
     }
@@ -193,6 +218,20 @@ async function main() {
   await server.connect(transport);
   process.stdin.on("end", () => process.exit(0));
   process.stdin.on("close", () => process.exit(0));
+
+  // Parent-death watchdog: if our parent (the orchestrator) dies WITHOUT cleanly
+  // closing our stdin — a hard kill, crash, or abrupt reboot — the stdin-EOF
+  // handlers above may never fire and we would linger as an orphan. Poll the
+  // parent's liveness and self-terminate when it is gone, so residual process
+  // trees can't pile up across reboots. unref() so this timer never keeps us alive.
+  const __parentPid = process.ppid;
+  setInterval(() => {
+    try {
+      process.kill(__parentPid, 0); // signal 0 = liveness probe; throws if gone
+    } catch {
+      process.exit(0);
+    }
+  }, 5000).unref();
 }
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => process.exit(0));

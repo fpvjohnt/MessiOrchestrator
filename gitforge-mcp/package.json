@@ -1,0 +1,22 @@
+{
+  "name": "gitforge-mcp",
+  "version": "0.1.0",
+  "description": "Git & GitHub MCP: version control as a craft, everything included. Git the tool (the three trees, branching, merge-vs-rebase, undo & recovery via reflog/reset/revert/restore, history archaeology with log/blame/bisect, conflicts & stash, the object model, team workflows) and GitHub the platform (repos/forks/pull-requests, Actions CI/CD, releases/tags/issues, the API & gh CLI, repository security). explain_topic/how_to/debug/myth_vs_reality plus check_practice → practice_verdict for the fast-moving GitHub surface. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "gitforge-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}

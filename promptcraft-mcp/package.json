@@ -1,0 +1,22 @@
+{
+  "name": "promptcraft-mcp",
+  "version": "0.1.0",
+  "description": "Prompt Engineering MCP: the vendor-neutral craft of reliable LLM output. Techniques (zero/few-shot, chain-of-thought, self-consistency, role, decomposition, ReAct/tree-of-thought/meta), structure (prompt anatomy, XML/delimiter structuring, output formatting, context & example selection), and reliability (iterating & evaluating, anti-patterns, robustness & prompt injection, prompting reasoning models). explain_topic/build_prompt/improve_prompt/myth_vs_reality plus check_practice → practice_verdict for model-specific guidance. Owns technique; defers OpenAI-specific prompt shape to openai, prompt-in-loop to loop, prompt-vs-RAG-vs-fine-tune to aiforge. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "promptcraft-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}

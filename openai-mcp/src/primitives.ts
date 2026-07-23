@@ -382,6 +382,7 @@ export function startHere(): string {
     `  • CHATGPT — the product: the Goal/Context/Output/Boundaries prompt shape, Chat vs Work, Projects, Plugins, Personalization, steering vs queuing → 'explain_primitive chatgpt'.`,
     `  • CODEX — the agentic coding surface (gpt-5.3-codex, the open-source CLI, the IDE extension, the cloud/app, PR code review, the SDK), AGENTS.md, reasoning effort, /plan · /goal · /review · @codex review, the sandbox → 'explain_primitive codex'.`,
     `  • "How does MY kind of work use these?" → 'how_they_use_it <role>' — engineer, analyst, researcher, IT, lawyer, realtor, clinician, accountant, teacher, marketer, manager, student, writer, product/design. The trap per role is the part worth reading.`,
+    `  • "What do the people who BUILD OpenAI actually do?" → 'how_they_build <role>' — the 19 engineering, research, safety, data, deployment, and ops roles behind ChatGPT/Codex/the API (Forward Deployed Engineer, Agent Post-Training, SRE, Threat Investigator, and more). The 'trap' per role is what outsiders get wrong.`,
     `  • "What should I build this on?" → 'pick_primitive <what you want to build>' — names the layer and justifies it.`,
     `  • The primitives (ChatGPT, Codex, Responses API, Agents SDK, Chat Completions, platform tools/MCP, realtime/voice, embeddings, fine-tuning, cost/batch) → 'explain_primitive <name>' (or no name for the map).`,
     `  • Something's broken → 'debug_openai <symptom>' — the OpenAI-specific failure modes, in likelihood order.`,

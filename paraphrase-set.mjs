@@ -143,4 +143,36 @@ export const PARAPHRASES = [
     base: "what does my agent loop need to run autonomously", expect: ["loop"],
     variants: ["should the agent that writes the code be the one that reviews it", "how do I give each parallel agent its own clean workspace"],
   },
+  // aiforge — the AI/ML engineering craft (keyword-dropping rephrasings)
+  {
+    base: "how do I fine-tune a Hugging Face model", expect: ["aiforge"],
+    variants: ["how do I train an open model on my own data cheaply with LoRA", "how do I adapt a transformers model to my task"],
+  },
+  {
+    base: "how does tokenization work", expect: ["aiforge"],
+    variants: ["why does a model miscount the tokens in a word", "how is text split into subword tokens a model can read"],
+  },
+  {
+    base: "how do embeddings work", expect: ["aiforge"],
+    variants: ["how do I turn text into vectors for semantic search", "how does similarity search find related documents"],
+  },
+  // gitforge
+  {
+    base: "how do I undo my last commit", expect: ["gitforge"],
+    variants: ["how do I take back the commit I just made in git", "I committed too early, how do I roll it back"],
+  },
+  {
+    base: "how do I fix a merge conflict", expect: ["gitforge"],
+    variants: ["git says both branches changed the same lines, what do I do", "how do I resolve conflicting changes when merging branches"],
+  },
+  // promptcraft
+  {
+    base: "how do I write a better prompt", expect: ["promptcraft"],
+    variants: ["how do I get more reliable answers out of the model with examples", "what few-shot examples should I give the model"],
+  },
+  // apiforge
+  {
+    base: "how do I test an API in Postman", expect: ["apiforge"],
+    variants: ["how do I assert the response fields of a REST endpoint", "how do I check my API returns the right JSON"],
+  },
 ];
