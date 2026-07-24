@@ -92,6 +92,19 @@ const PHRASES: Record<string, string> = {
   "candidate profile": "resume",
   "resume against": "resume",
 
+  // → ghmonitor (CI/CD delivery STATUS). gitforge owns the GitHub how-to
+  // vocabulary (workflow/actions/ci as a subject to learn); these are
+  // STATUS-INTENT phrases — "did it pass/fail", "what broke" — that mean
+  // "monitor my delivery", not "teach me GitHub". buildstatus is a ghmonitor tag.
+  "pass or fail": "buildstatus",
+  "what broke after": "buildstatus",
+  "build passed": "buildstatus",
+  "build failed": "buildstatus",
+  "workflow failed": "buildstatus",
+  "workflow passed": "buildstatus",
+  "ci failed": "buildstatus",
+  "ci passed": "buildstatus",
+
   // → education. "test"/"final"/"material" are all ordinary English words; only
   // the academic phrasing around them means school.
   "prepare for a test": "exam",

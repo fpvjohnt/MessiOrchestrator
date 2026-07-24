@@ -57,6 +57,10 @@ import { detectType as diDetect } from "./docingest-mcp/dist/detect.js";
 import { hostAllowed as diHostAllowed } from "./docingest-mcp/dist/fetch.js";
 import { redactSecrets as diRedact, neutralizePromptInjection as diNeutralize, retrieve as diRetrieve } from "./docingest-mcp/dist/security.js";
 import * as DIF from "./docingest-mcp/test-fixtures.mjs";
+import { summarizeChecks as ghSummarize, conclusionToState as ghConcl, overallOf as ghOverall, renderReport as ghRender, deploymentStateToState as ghDep } from "./ghmonitor-mcp/dist/summarize.js";
+import { summarizeFailure as ghFail, classifyCause as ghClassify, redact as ghRedact } from "./ghmonitor-mcp/dist/analyze.js";
+import { detectChanges as ghDetect } from "./ghmonitor-mcp/dist/dedup.js";
+import { mapStatus as ghMap, PermissionError as GhPerm, NotFoundError as GhNotFound } from "./ghmonitor-mcp/dist/github.js";
 import { dollarsToCents, secFilings, kalshiMarkets } from "./research-mcp/dist/data-sources.js";
 import { corroborationPossible, ALL_PROVIDERS } from "./research-mcp/dist/providers.js";
 import { assertPublicUrl } from "./research-mcp/dist/ssrf-guard.js";
@@ -1623,6 +1627,53 @@ for (const [name, out] of START_HERE) {
   const big = { source: "x", title: "x", mimeType: "text/plain", kind: "text", text: "", sections: [{ ref: "a", text: "apples ".repeat(80) }, { ref: "b", text: "oranges ".repeat(80) }], tables: [], warnings: [] };
   const rq = diRetrieve(big, "oranges", 300);
   check("docingest: query retrieval targets the relevant section + caps size", rq.passages[0].ref === "b" && rq.totalChars <= 300);
+}
+
+// ── 20. GitHub delivery monitoring (ghmonitor-mcp) ─────────────────────────
+// All offline: synthetic API payloads and log samples exercise the pure logic.
+// Covers passing checks, a failing test workflow (+log diagnosis), a deployment
+// failure, dedup/state-change, and unavailable permissions (requirement 8).
+{
+  // 1. Passing checks.
+  const pass = ghSummarize("o/r", "abc", { checkRuns: [{ name: "build", status: "completed", conclusion: "success" }, { name: "test", status: "completed", conclusion: "success" }] });
+  check("ghmonitor: all-success checks → passing", pass.overall === "passing" && pass.counts.passing === 2);
+  check("ghmonitor: renderReport green bottom line", ghRender(pass).includes("green"));
+
+  // 2. Failing test workflow + log diagnosis.
+  const failRep = ghSummarize("o/r", "abc", { workflowRuns: [{ id: 42, name: "CI", status: "completed", conclusion: "failure", html_url: "https://gh/run/42" }] });
+  check("ghmonitor: failing workflow → failing overall", failRep.overall === "failing" && failRep.checks[0].runId === 42);
+  const testLog = "2026-07-24T10:00:00.0000000Z Running tests\n2026-07-24T10:00:01.0000000Z ##[error]AssertionError: expected 3 to equal 4\n2026-07-24T10:00:01.0000000Z   at src/math.test.ts:12:5\n2026-07-24T10:00:02.0000000Z ##[error]Process completed with exit code 1";
+  const diag = ghFail({ jobName: "unit-tests", log: testLog, author: "fpvjohnt" });
+  check("ghmonitor: test failure classified as assertion", diag.likelyCause.includes("assertion"));
+  check("ghmonitor: impacted file extracted from log", diag.impactedFiles.includes("src/math.test.ts"));
+  check("ghmonitor: likely owner attributed", diag.owner === "fpvjohnt");
+  check("ghmonitor: error excerpt strips timestamps", !diag.errorExcerpt.includes("2026-07-24T10"));
+  check("ghmonitor: TS error classified", ghClassify("src/x.ts(3,5): error TS2345: bad").cause.includes("TypeScript"));
+  check("ghmonitor: missing-module classified", ghClassify("Error: Cannot find module 'zod'").cause.includes("missing module"));
+
+  // 3. Deployment failure.
+  check("ghmonitor: deployment state mapping", ghDep("failure") === "failing" && ghDep("success") === "passing" && ghDep("in_progress") === "pending");
+  const depRep = ghSummarize("o/r", "abc", { deployments: [{ state: "failure", environment: "prod" }] });
+  check("ghmonitor: deployment failure → failing overall", depRep.overall === "failing");
+
+  // 4. Deduplication / state-change only.
+  const rep1 = ghSummarize("o/r", "sha1", { checkRuns: [{ name: "build", status: "completed", conclusion: "failure", id: 1 }] });
+  const c1 = ghDetect(rep1, {}, "t1");
+  check("ghmonitor: a new failure is reported", c1.changes.length === 1 && c1.changes[0].state === "failing");
+  const c2 = ghDetect(rep1, c1.nextState, "t2");
+  check("ghmonitor: the same failure again is deduped", c2.changes.length === 0);
+  const rep2 = ghSummarize("o/r", "sha1", { checkRuns: [{ name: "build", status: "completed", conclusion: "success", id: 1 }] });
+  const c3 = ghDetect(rep2, c1.nextState, "t3");
+  check("ghmonitor: a state transition IS reported", c3.changes.length === 1 && c3.changes[0].state === "passing");
+
+  // 5. Unavailable permissions.
+  check("ghmonitor: 403 → PermissionError with guidance", ghMap(403, "/x") instanceof GhPerm && /permission/i.test(ghMap(403, "/x").message));
+  check("ghmonitor: 404 → NotFoundError", ghMap(404, "/x") instanceof GhNotFound);
+
+  // 7. Redaction + mapping fundamentals.
+  check("ghmonitor: redacts a GitHub token", ghRedact("token=ghp_abcdefghijklmnopqrstuvwx1234567890").includes("[REDACTED]") && !ghRedact("ghp_abcdefghijklmnopqrstuvwx1234567890").includes("abcdefghij"));
+  check("ghmonitor: conclusion mapping", ghConcl("completed", "success") === "passing" && ghConcl("completed", "cancelled") === "cancelled" && ghConcl("in_progress", null) === "pending" && ghConcl("completed", "skipped") === "skipped");
+  check("ghmonitor: overall precedence failing>pending>passing", ghOverall(["passing", "pending", "failing"]) === "failing" && ghOverall(["passing", "pending"]) === "pending" && ghOverall(["passing", "skipped"]) === "passing");
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────

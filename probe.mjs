@@ -50,6 +50,12 @@ const PROBES = [
   // docingest routes on document/pdf/attachment/extract, not generic 'file' senses
   { q: "extract the tables from this pdf attachment", want: "docingest" },
   { q: "pull the text out of this scanned document and its attachments", want: "docingest" },
+  // ghmonitor routes on github/ci/workflow/deployment, not generic build senses
+  { q: "did my github actions workflow pass or fail after the last push", want: "ghmonitor" },
+  { q: "summarize the failing ci pipeline and the deployment status", want: "ghmonitor" },
+  { q: "what broke after my last push", want: "ghmonitor" },
+  // gitforge (GitHub how-to) must still own SETUP intent, not ghmonitor
+  { q: "how do I set up a github actions workflow for ci", want: "gitforge", mustNot: "ghmonitor" },
   // claim-check: research rides along as the independent checker, specialist leads
   { q: "is it true that eating carrots improves your night vision", want: "research" },
   { q: "debunk the myth that we only use ten percent of our brain", want: "research" },

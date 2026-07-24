@@ -1149,5 +1149,32 @@
     "registeredAt": "2026-07-24T00:00:00.000Z",
     "fallback": false,
     "env": {}
+  },
+  {
+    "name": "ghmonitor",
+    "description": "GitHub delivery monitoring: pass/fail/pending status for commits and pull requests (Actions workflows, required checks, commit statuses, deployments, code scanning), with links; diagnoses a failing run from its redacted logs (what failed, likely cause, impacted files, owner, next step); dedupes to state-changes only. Authorized read-only; never exposes tokens.",
+    "tags": [
+      "cd",
+      "deployments",
+      "pipeline",
+      "codescanning",
+      "mergeability",
+      "commitstatus",
+      "buildstatus",
+      "checkrun",
+      "actionsrun",
+      "prchecks",
+      "precommit"
+    ],
+    "transport": "stdio",
+    "command": "node",
+    "args": [
+      "ghmonitor-mcp/dist/index.js"
+    ],
+    "cwd": "/path/to/John MCP",
+    "status": "active",
+    "registeredAt": "2026-07-24T00:00:00.000Z",
+    "fallback": false,
+    "env": {}
   }
 ]
