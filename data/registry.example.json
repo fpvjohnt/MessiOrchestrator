@@ -1154,8 +1154,7 @@
     "name": "ghmonitor",
     "description": "GitHub delivery monitoring: pass/fail/pending status for commits and pull requests (Actions workflows, required checks, commit statuses, deployments, code scanning), with links; diagnoses a failing run from its redacted logs (what failed, likely cause, impacted files, owner, next step); dedupes to state-changes only. Authorized read-only; never exposes tokens.",
     "tags": [
-      "cd",
-      "deployments",
+      "continuousdelivery",
       "pipeline",
       "codescanning",
       "mergeability",

@@ -63,6 +63,13 @@ const PROBES = [
   // claim-check: research rides along as the independent checker, specialist leads
   { q: "is it true that eating carrots improves your night vision", want: "research" },
   { q: "debunk the myth that we only use ten percent of our brain", want: "research" },
+  // Stemmed/sense collisions surfaced by the 2026-07-24 routing review.
+  { q: "index this pdf so I can search it later", want: "docsearch", mustNot: "nestegg" }, // index != index fund
+  { q: "why did the deployment fail in ci", want: "ghmonitor", mustNot: "polymath" }, // CI deploy != infra deployment
+  { q: "compare cd rates versus a high yield savings account", want: "nestegg", mustNot: "ghmonitor" }, // CD = certificate of deposit
+  { q: "did my ci build pass", want: "ghmonitor" }, // present-tense reachability
+  { q: "are my pull request checks passing", want: "ghmonitor" },
+  { q: "monitor errors across my assets", want: "overseer", mustNot: "ghmonitor" }, // own-assets sense
 ];
 
 let pass = 0;
@@ -89,14 +96,23 @@ if (failures.length) {
 // Informational: tags shared across >=2 assets. Overlap is often legitimate
 // (research/overseer share operational words), so this is a report, not a gate —
 // it tells you WHERE to add a probe when you next touch one of these words.
+//
+// STEM before comparing: the router folds "deployments"->"deployment" and
+// "stocks"->"stock" before matching, so two assets whose RAW tags differ
+// ("deployment" vs "deployments") still collide in the router's view. Comparing
+// raw strings hid exactly that class (routing review, 2026-07-24). Mirror the
+// router's conservative plural fold here.
+const stem = (w) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
 const tagOwners = new Map();
 for (const a of registry) {
   if (a.status !== "active") continue;
-  for (const t of a.tags || []) {
-    if (!tagOwners.has(t)) tagOwners.set(t, []);
-    tagOwners.get(t).push(a.name);
+  for (const raw of a.tags || []) {
+    const t = stem(raw);
+    if (!tagOwners.has(t)) tagOwners.set(t, new Set());
+    tagOwners.get(t).add(a.name);
   }
 }
+for (const [t, owners] of tagOwners) tagOwners.set(t, [...owners]);
 const shared = [...tagOwners.entries()].filter(([, owners]) => owners.length >= 2).sort((a, b) => b[1].length - a[1].length);
 if (shared.length) {
   console.log(`\nSHARED TAGS (informational — ${shared.length} tags in >=2 assets; probe these when touched):`);

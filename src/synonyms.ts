@@ -104,6 +104,17 @@ const PHRASES: Record<string, string> = {
   "workflow passed": "buildstatus",
   "ci failed": "buildstatus",
   "ci passed": "buildstatus",
+  // ghmonitor's precise tags (buildstatus/prchecks/actionsrun) can't be produced
+  // by tokenization, so natural PRESENT-tense CI-status phrasings need explicit
+  // hooks or they fall through to research.
+  // (stemmed keys: "checks"->"check", "actions"->"action")
+  "ci build": "buildstatus",
+  "build pass": "buildstatus",
+  "build passing": "buildstatus",
+  "check passing": "buildstatus",
+  "pull request check": "buildstatus",
+  "action run": "buildstatus",
+  "failing action": "buildstatus",
 
   // → docsearch (search the ingested corpus). docingest FETCHES a specific
   // document; docsearch QUERIES what's already indexed. These phrases are the
@@ -218,6 +229,20 @@ const IDIOMS: Record<string, { canon?: string; consume: string[] }> = {
   // the bare "trading at": that was measured to collide, pulling kalshi onto
   // stock questions ("stocks trading at a discount"). Keep the narrow bigram.
   "contract trading": { canon: "eventcontract", consume: ["contract"] },
+  // → docsearch, and CONSUME "index" so nestegg's index-fund tag stops stealing
+  // "index this pdf so I can search it". Indexing a document for search is not
+  // an index fund. NOTE: keys are matched against the STEMMED token stream, so
+  // trailing-s words are pre-stemmed here: "this"->"thi", "status"->"statu".
+  "index thi": { canon: "searchindex", consume: ["index"] }, // "index this"
+  "index the": { canon: "searchindex", consume: ["index"] },
+  "index my": { canon: "searchindex", consume: ["index"] },
+  // → ghmonitor, and CONSUME "deployment" so polymath's infra-deployment tag
+  // stops riding CI delivery-status questions. A failing/status deployment here
+  // is a CI/CD delivery event, not datacenter infrastructure.
+  "deployment fail": { canon: "buildstatus", consume: ["deployment"] },
+  "deployment failed": { canon: "buildstatus", consume: ["deployment"] },
+  "deployment statu": { canon: "buildstatus", consume: ["deployment"] }, // "deployment status"
+  "failed deployment": { canon: "buildstatus", consume: ["deployment"] },
 };
 
 /**
