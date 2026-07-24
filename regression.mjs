@@ -62,6 +62,7 @@ import { summarizeFailure as ghFail, classifyCause as ghClassify, redact as ghRe
 import { detectChanges as ghDetect } from "./ghmonitor-mcp/dist/dedup.js";
 import { mapStatus as ghMap, PermissionError as GhPerm, NotFoundError as GhNotFound } from "./ghmonitor-mcp/dist/github.js";
 import { toChunks as dsToChunks, upsert as dsUpsert, removeSource as dsRemove } from "./docsearch-mcp/dist/indexer.js";
+import { serialize as dsSerialize } from "./docsearch-mcp/dist/store.js";
 import { search as dsSearch, excerpt as dsExcerpt } from "./docsearch-mcp/dist/engine.js";
 import { dollarsToCents, secFilings, kalshiMarkets } from "./research-mcp/dist/data-sources.js";
 import { corroborationPossible, ALL_PROVIDERS } from "./research-mcp/dist/providers.js";
@@ -1715,6 +1716,14 @@ for (const [name, out] of START_HERE) {
   check("docsearch: delete removes the source", !dsSearch(ix3, "American Express").some((r) => r.chunk.sourceId === "amex"));
   // Excerpt centers on the matched term (keeps raw docs out).
   check("docsearch: excerpt centers on the query term", dsExcerpt("lots of filler text and then the APR is 24.99 percent for purchases and more filler", "APR").includes("APR"));
+  // Concurrency: the serializer prevents lost read-modify-write updates that a
+  // parallel task_assets fan-out of index_document would otherwise cause.
+  {
+    let counter = 0;
+    const bump = () => dsSerialize(async () => { const v = counter; await new Promise((r) => setTimeout(r, 2)); counter = v + 1; });
+    await Promise.all([bump(), bump(), bump(), bump(), bump()]);
+    check("docsearch: serialize prevents lost updates under concurrency", counter === 5);
+  }
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────

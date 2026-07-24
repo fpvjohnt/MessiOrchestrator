@@ -8,6 +8,21 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Chunk } from "./types.js";
 
+// In-process serializer. The orchestrator fans out via task_assets (Promise.all),
+// so two index_document/delete_source calls can hit this single docsearch process
+// concurrently; without serialization both load the same base, both write, and
+// last-writer-wins silently drops one indexing (or interleaves a corrupt file).
+// A promise chain serializes every load→mutate→save critical section.
+let chain: Promise<unknown> = Promise.resolve();
+export function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const p = chain.then(fn, fn);
+  chain = p.then(
+    () => {},
+    () => {}
+  );
+  return p;
+}
+
 function dataDir(): string {
   if (process.env.DOCSEARCH_DATA_DIR) return process.env.DOCSEARCH_DATA_DIR;
   return join(dirname(dirname(fileURLToPath(import.meta.url))), "data");

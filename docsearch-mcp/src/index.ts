@@ -4,7 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { search, excerpt } from "./engine.js";
 import { toChunks, upsert, removeSource, sourceCount } from "./indexer.js";
-import { loadChunks, saveChunks, loadStats, saveStats } from "./store.js";
+import { loadChunks, saveChunks, loadStats, saveStats, serialize } from "./store.js";
 import type { IndexInput, SearchResult } from "./types.js";
 
 const server = new McpServer(
@@ -52,29 +52,30 @@ server.registerTool(
       chunks: z.array(chunkSchema).min(1).max(5000).describe("Citable passages; docingest sections/tables map here."),
     },
   },
-  async (a) => {
-    const stats = await loadStats();
-    try {
-      const input: IndexInput = {
-        sourceId: a.source_id, title: a.title, url: a.url, sourceType: a.source_type, mimeType: a.mime_type,
-        author: a.author, createdAt: a.created_at, aclScope: a.acl_scope, chunks: a.chunks,
-      };
-      const existing = await loadChunks();
-      const fresh = toChunks(input, Date.now());
-      if (!fresh.length) throw new Error("no non-empty chunks to index.");
-      const next = upsert(existing, fresh, a.source_id);
-      await saveChunks(next);
-      stats.chunks = next.length;
-      stats.sources = sourceCount(next);
-      stats.lastIndexedAt = new Date().toISOString();
-      await saveStats(stats);
-      return textResult(`Indexed ${fresh.length} chunk(s) for "${a.title}" (source_id=${a.source_id}, scope=${a.acl_scope ?? "default"}).\nBOTTOM LINE: index now holds ${next.length} chunk(s) across ${stats.sources} source(s).`);
-    } catch (err) {
-      stats.ingestFailures++;
-      await saveStats(stats).catch(() => {});
-      return errorResult(err);
-    }
-  }
+  async (a) =>
+    serialize(async () => {
+      const stats = await loadStats();
+      try {
+        const input: IndexInput = {
+          sourceId: a.source_id, title: a.title, url: a.url, sourceType: a.source_type, mimeType: a.mime_type,
+          author: a.author, createdAt: a.created_at, aclScope: a.acl_scope, chunks: a.chunks,
+        };
+        const existing = await loadChunks();
+        const fresh = toChunks(input, Date.now());
+        if (!fresh.length) throw new Error("no non-empty chunks to index.");
+        const next = upsert(existing, fresh, a.source_id);
+        await saveChunks(next);
+        stats.chunks = next.length;
+        stats.sources = sourceCount(next);
+        stats.lastIndexedAt = new Date().toISOString();
+        await saveStats(stats);
+        return textResult(`Indexed ${fresh.length} chunk(s) for "${a.title}" (source_id=${a.source_id}, scope=${a.acl_scope ?? "default"}).\nBOTTOM LINE: index now holds ${next.length} chunk(s) across ${stats.sources} source(s).`);
+      } catch (err) {
+        stats.ingestFailures++;
+        await saveStats(stats).catch(() => {});
+        return errorResult(err);
+      }
+    })
 );
 
 server.registerTool(
@@ -100,10 +101,9 @@ server.registerTool(
     },
   },
   async (a) => {
-    const stats = await loadStats();
     const started = Date.now();
     try {
-      const chunks = await loadChunks();
+      const chunks = await loadChunks(); // atomic writes → never a torn read
       const results = search(chunks, a.query, {
         k: a.k,
         mode: a.mode,
@@ -111,11 +111,15 @@ server.registerTool(
         authorizedScopes: a.authorized_scopes,
       });
       const ms = Date.now() - started;
-      stats.searches++;
-      stats.lastSearchMs = ms;
-      stats.sumSearchMs += ms;
-      if (!results.length) stats.emptyResults++;
-      await saveStats(stats).catch(() => {});
+      // Serialize the stats read-modify-write so concurrent searches don't clobber it.
+      await serialize(async () => {
+        const stats = await loadStats();
+        stats.searches++;
+        stats.lastSearchMs = ms;
+        stats.sumSearchMs += ms;
+        if (!results.length) stats.emptyResults++;
+        await saveStats(stats);
+      }).catch(() => {});
       return textResult(render(a.query, results, ms));
     } catch (err) {
       return errorResult(err);
@@ -130,21 +134,22 @@ server.registerTool(
     description: "Remove all indexed chunks for a source_id (use when a document is deleted or must be forgotten).",
     inputSchema: { source_id: z.string().min(1).max(400) },
   },
-  async ({ source_id }) => {
-    try {
-      const existing = await loadChunks();
-      const next = removeSource(existing, source_id);
-      const removed = existing.length - next.length;
-      await saveChunks(next);
-      const stats = await loadStats();
-      stats.chunks = next.length;
-      stats.sources = sourceCount(next);
-      await saveStats(stats);
-      return textResult(`Removed ${removed} chunk(s) for source_id=${source_id}.\nBOTTOM LINE: index now holds ${next.length} chunk(s).`);
-    } catch (err) {
-      return errorResult(err);
-    }
-  }
+  async ({ source_id }) =>
+    serialize(async () => {
+      try {
+        const existing = await loadChunks();
+        const next = removeSource(existing, source_id);
+        const removed = existing.length - next.length;
+        await saveChunks(next);
+        const stats = await loadStats();
+        stats.chunks = next.length;
+        stats.sources = sourceCount(next);
+        await saveStats(stats);
+        return textResult(`Removed ${removed} chunk(s) for source_id=${source_id}.\nBOTTOM LINE: index now holds ${next.length} chunk(s).`);
+      } catch (err) {
+        return errorResult(err);
+      }
+    })
 );
 
 server.registerTool(

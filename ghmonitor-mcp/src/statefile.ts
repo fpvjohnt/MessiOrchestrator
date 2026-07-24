@@ -6,6 +6,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StateMap } from "./dedup.js";
 
+// Serialize load→detect→save so two concurrent poll_changes calls (possible via
+// the orchestrator's task_assets fan-out) can't clobber the dedup state.
+let chain: Promise<unknown> = Promise.resolve();
+export function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const p = chain.then(fn, fn);
+  chain = p.then(
+    () => {},
+    () => {}
+  );
+  return p;
+}
+
 function statePath(): string {
   if (process.env.GHMONITOR_STATE_PATH) return process.env.GHMONITOR_STATE_PATH;
   const here = dirname(dirname(fileURLToPath(import.meta.url))); // package root (out of dist/)

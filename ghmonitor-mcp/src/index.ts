@@ -7,7 +7,7 @@ import { summarizeChecks, renderReport, deploymentStateToState, overallOf } from
 import type { CheckState } from "./types.js";
 import { summarizeFailure, renderFailure } from "./analyze.js";
 import { detectChanges, renderChanges } from "./dedup.js";
-import { loadState, saveState } from "./statefile.js";
+import { loadState, saveState, serialize } from "./statefile.js";
 
 const server = new McpServer(
   { name: "ghmonitor", version: "0.1.0" },
@@ -194,9 +194,12 @@ server.registerTool(
       const sha = await resolveRef(owner, name, ref);
       const s = await gh.refStatus(owner, name, sha);
       const report = summarizeChecks(`${owner}/${name}`, sha.slice(0, 12), s);
-      const prev = await loadState();
-      const { changes, nextState } = detectChanges(report, prev, new Date().toISOString());
-      await saveState(nextState);
+      const changes = await serialize(async () => {
+        const prev = await loadState();
+        const { changes, nextState } = detectChanges(report, prev, new Date().toISOString());
+        await saveState(nextState);
+        return changes;
+      });
       return textResult(renderChanges(report, changes));
     } catch (err) {
       return errorResult(err);
