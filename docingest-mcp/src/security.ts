@@ -18,7 +18,10 @@ const SECRET_PATTERNS: RegExp[] = [
 
 export function redactSecrets(text: string): string {
   let out = text;
-  for (const re of SECRET_PATTERNS) out = out.replace(re, (m) => m.split(/[:=]/)[0].match(/[:=]/) ? m.replace(/(\s*[:=]\s*)\S+/, "$1[REDACTED]") : "[REDACTED]");
+  // Keep "api_key: [REDACTED]" (preserve the label) but redact bare secrets
+  // wholesale. Mirrors ghmonitor's redact(); the old m.split()[0].match() guard
+  // was always false (a first split segment never contains its delimiter).
+  for (const re of SECRET_PATTERNS) out = out.replace(re, (m) => (/[:=]/.test(m) ? m.replace(/([:=]\s*)\S+/, "$1[REDACTED]") : "[REDACTED]"));
   return out;
 }
 

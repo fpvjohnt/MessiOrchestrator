@@ -46,8 +46,26 @@ function extractContentStreams(bytes: Buffer, latin: string): string[] {
   const re = /stream\r?\n/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(latin)) !== null) {
-    const dictStart = latin.lastIndexOf("<<", m.index);
-    const dict = dictStart >= 0 ? latin.slice(dictStart, m.index) : "";
+    // Find THIS stream's dict by balancing nested << >> backward from `stream`.
+    // A naive lastIndexOf("<<") returns the innermost dict — e.g. the
+    // `/DecodeParms << /Predictor 12 >>` sub-dict — which hides the outer
+    // `/Filter /FlateDecode` and made those pages silently extract nothing.
+    let depth = 0;
+    let dictStart = -1;
+    for (let i = m.index - 1; i >= 1; i--) {
+      if (latin[i] === ">" && latin[i - 1] === ">") {
+        depth++;
+        i--;
+      } else if (latin[i] === "<" && latin[i - 1] === "<") {
+        depth--;
+        i--;
+        if (depth === 0) {
+          dictStart = i;
+          break;
+        }
+      }
+    }
+    const dict = dictStart >= 0 ? latin.slice(dictStart, m.index) : latin.slice(Math.max(0, m.index - 1000), m.index);
     const dataStart = m.index + m[0].length;
     const end = latin.indexOf("endstream", dataStart);
     if (end < 0) continue;

@@ -32,6 +32,9 @@ const PACKAGES = [
   "promptcraft-mcp",
   "apiforge-mcp",
   "kalshi-mcp",
+  "docingest-mcp",
+  "ghmonitor-mcp",
+  "docsearch-mcp",
 ];
 
 function run(cmd, cwd) {

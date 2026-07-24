@@ -1594,6 +1594,8 @@ for (const [name, out] of START_HERE) {
   check("docingest: text PDF extracts text + page ref", pdf.kind === "pdf" && pdf.text.includes("Hello Ingestion World") && pdf.sections.some((s) => s.ref === "page 1"));
   const scan = diExtract(DIF.makeScannedPdf(), "s.pdf");
   check("docingest: scanned PDF → ocr-needed + client handoff, no phantom text", scan.warnings.includes("ocr-needed") && !!scan.clientHandoff && scan.text.trim() === "");
+  const flate = diExtract(DIF.makeFlatePdfDecodeParms(), "f.pdf");
+  check("docingest: FlateDecode PDF with nested /DecodeParms extracts text", flate.text.includes("DecodeParms Works"));
   const jpg = diExtract(DIF.makeJpeg(), "p.jpg");
   check("docingest: JPEG detected as image, handed to client for OCR", jpg.kind === "image" && jpg.warnings.includes("ocr-needed") && !!jpg.clientHandoff);
   const docx = diExtract(DIF.makeDocx(), "r.docx");

@@ -3,6 +3,22 @@
 // (the reader in zip.ts handles stored + deflate); the PDFs and JPEG are
 // hand-authored minimal-but-valid byte sequences.
 import { Buffer } from "node:buffer";
+import { deflateSync } from "node:zlib";
+
+// A FlateDecode text stream whose dict carries a nested /DecodeParms sub-dict —
+// the shape that fooled lastIndexOf("<<") into reading the inner dict and
+// silently dropping the page. Predictor 1 = no prediction, so inflate returns
+// the content directly.
+export function makeFlatePdfDecodeParms() {
+  const content = Buffer.from("BT /F1 24 Tf 72 720 Td (DecodeParms Works) Tj ET", "latin1");
+  const z = deflateSync(content);
+  const head = Buffer.from(
+    `%PDF-1.4\n4 0 obj<< /Filter /FlateDecode /DecodeParms << /Predictor 1 >> /Length ${z.length} >>stream\n`,
+    "latin1"
+  );
+  const tail = Buffer.from("\nendstream endobj\n%%EOF", "latin1");
+  return Buffer.concat([head, z, tail]);
+}
 
 function crc32(buf) {
   let c = ~0;
