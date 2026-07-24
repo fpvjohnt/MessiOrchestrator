@@ -23,7 +23,7 @@ const ORCHESTRATOR_INSTRUCTIONS = [
   "The specialists cover: buying a home & mortgages; California & federal legal info; investing & retirement; health & medical navigation; job hunting & careers; technical & AI-engineering consulting; science & curiosity; education & studying; communication & persuasion; sports; world governments & immigration; world languages; world religions; agentic AI loop engineering; live Kalshi prediction-market prices; ElevenLabs voice (text-to-speech / transcription) — plus a 'research' asset for anything else factual, and an 'overseer' for auditing. If nothing fits, open_case still routes to 'research', so it is ALWAYS the right first call.",
   "PREFER the orchestrator's 'research' asset over ad-hoc/built-in web search, so facts come back corroborated and the work is logged in a case. The ONLY messages that skip open_case are: greetings and pure chit-chat; a clarifying question back to the user; a follow-up you can answer from a case that is already open; or when the user EXPLICITLY says not to use tools. Everything else opens a case.",
   "",
-  "Normal flow: open_case(objective) routes to the right asset(s) → task_asset calls their tools → synthesize_case merges → close_case records the outcome.",
+  "FAST PATH (do this to keep cases quick): open_case(objective) → ONE task_assets call that runs the chosen specialists AND the research verifier in PARALLEL → synthesize_case → close_case. Every extra sequential task_asset call is another slow round-trip; batch them. Only fall back to single task_asset for a genuine follow-up that depends on a previous result.",
   "The orchestrator itself is deterministic and has NO language model — YOU are the reasoning/checker in this loop. Do not stop at the first asset answer when it contains facts.",
   "",
   "THE VERIFY LOOP (run it before giving a final answer whenever the answer contains a CURRENT/LIVE fact — a price, rate, law, limit, statistic, date, model/framework specific — or any checkable factual claim):",
@@ -416,11 +416,74 @@ server.registerTool(
   }
 );
 
+// One asset tool call: validate, invoke, log, and return normalized content.
+// Shared by task_asset (one) and task_assets (many, in parallel) so the two
+// paths can never drift. A per-task failure is logged and returned as an error
+// RESULT (not thrown), so one failing call in a batch does not sink the others.
+interface TaskOutcome {
+  asset: string;
+  tool: string;
+  // The asset's own content blocks (SDK's loose CallToolResult union); kept as
+  // any[] so non-text blocks pass through unchanged, as task_asset always did.
+  content: any[];
+  isError: boolean;
+}
+async function runOneTask(
+  caseId: string,
+  caseRecord: { assignedAssets: string[] },
+  asset: string,
+  tool: string,
+  toolArgs: Record<string, unknown> | undefined
+): Promise<TaskOutcome> {
+  const timestamp = new Date().toISOString();
+  const startedMs = Date.now();
+  try {
+    if (!caseRecord.assignedAssets.includes(asset)) {
+      throw new Error(
+        `Asset "${asset}" is not assigned to case ${caseId}. Assigned assets: ${caseRecord.assignedAssets.join(", ") || "(none)"}. Use assign_asset to add it first.`
+      );
+    }
+    const assetConfig = await registry.getAsset(asset);
+    if (!assetConfig) throw new Error(`No asset named "${asset}" is registered.`);
+    if (assetConfig.status !== "active") throw new Error(`Asset "${asset}" is retired.`);
+
+    const result = await clientManager.callAssetTool(assetConfig, tool, toolArgs);
+    // Stamp the duration BEFORE the store write, so ~11ms of load+fsync+rename
+    // is not folded into every "asset latency" number the overseer reports.
+    const durationMs = Date.now() - startedMs;
+    await caseStore.appendLog(caseId, {
+      asset,
+      tool,
+      arguments: capForLog(toolArgs ?? {}),
+      result: capForLog(result),
+      timestamp,
+      durationMs,
+    });
+    const assetContent = Array.isArray(result.content) ? result.content : [];
+    const assetIsError = result.isError === true;
+    return { asset, tool, content: assetContent, isError: assetIsError };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await caseStore
+      .appendLog(caseId, { asset, tool, arguments: capForLog(toolArgs ?? {}), error: message, timestamp, durationMs: Date.now() - startedMs })
+      // If cases.json is locked/unparseable, calls silently stop being recorded
+      // and every later report describes less than actually happened. Surface it
+      // on stderr rather than masking the original error.
+      .catch((logErr) => {
+        console.error(
+          `[task] FAILED TO LOG ${asset}.${tool} on case ${caseId}: ${logErr instanceof Error ? logErr.message : String(logErr)} — the case record is now incomplete.`
+        );
+      });
+    return { asset, tool, content: [{ type: "text", text: message }], isError: true };
+  }
+}
+
 server.registerTool(
   "task_asset",
   {
     title: "Task Asset",
-    description: "Call a tool on an asset assigned to a case and record the result in the case log.",
+    description:
+      "Call a tool on an asset assigned to a case and record the result. For 2+ calls, PREFER task_assets — it runs them in parallel in a single turn and is the main way to cut case latency.",
     inputSchema: {
       case_id: z.string().min(1),
       asset: z.string().min(1),
@@ -429,66 +492,48 @@ server.registerTool(
     },
   },
   async ({ case_id, asset, tool, arguments: toolArgs }) => {
-    const timestamp = new Date().toISOString();
-    const startedMs = Date.now();
-    try {
-      const caseRecord = await caseStore.getCase(case_id);
-      if (!caseRecord) throw new Error(`No case with id "${case_id}" found.`);
-      if (caseRecord.status === "closed") throw new Error(`Case ${case_id} is closed.`);
-      if (!caseRecord.assignedAssets.includes(asset)) {
-        throw new Error(
-          `Asset "${asset}" is not assigned to case ${case_id}. Assigned assets: ${
-            caseRecord.assignedAssets.join(", ") || "(none)"
-          }. Use assign_asset to add it first.`
-        );
-      }
-      const assetConfig = await registry.getAsset(asset);
-      if (!assetConfig) throw new Error(`No asset named "${asset}" is registered.`);
-      if (assetConfig.status !== "active") throw new Error(`Asset "${asset}" is retired.`);
+    const caseRecord = await caseStore.getCase(case_id);
+    if (!caseRecord) return errorResult(new Error(`No case with id "${case_id}" found.`));
+    if (caseRecord.status === "closed") return errorResult(new Error(`Case ${case_id} is closed.`));
+    const r = await runOneTask(case_id, caseRecord, asset, tool, toolArgs);
+    return { content: [{ type: "text" as const, text: `Result from ${r.asset}.${r.tool}:` }, ...r.content], isError: r.isError || undefined };
+  }
+);
 
-      const result = await clientManager.callAssetTool(assetConfig, tool, toolArgs);
-      // Stamp the duration BEFORE the store write. It used to be evaluated
-      // inside the object literal — i.e. after appendLog had already begun —
-      // which folded ~11ms of load+fsync+rename into every "asset latency"
-      // number the overseer reports. Measure the asset, not the bookkeeping.
-      const durationMs = Date.now() - startedMs;
-      await caseStore.appendLog(case_id, {
-        asset,
-        tool,
-        arguments: capForLog(toolArgs ?? {}),
-        result: capForLog(result),
-        timestamp,
-        durationMs,
-      });
-      // Forward the asset's own content blocks directly instead of
-      // JSON-stringifying the whole CallToolResult, so non-text content
-      // (images, embedded resources) survives intact and isError propagates.
-      // callTool()'s return type is a loose union when no resultSchema is
-      // passed, so narrow both fields defensively before reusing them.
-      const assetContent = Array.isArray(result.content) ? result.content : [];
-      const assetIsError = typeof result.isError === "boolean" ? result.isError : undefined;
-      return {
-        content: [{ type: "text" as const, text: `Result from ${asset}.${tool}:` }, ...assetContent],
-        isError: assetIsError,
-      };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await caseStore
-        .appendLog(case_id, { asset, tool, arguments: capForLog(toolArgs ?? {}), error: message, timestamp, durationMs: Date.now() - startedMs })
-        // An empty catch here hid a real failure mode: if cases.json is locked
-        // or unparseable, calls silently stop being recorded and every later
-        // report — case_report, synthesize_case, the whole overseer — quietly
-        // describes less than actually happened. It still must not mask the
-        // original error, so it is reported on stderr rather than thrown.
-        .catch((logErr) => {
-          console.error(
-            `[task_asset] FAILED TO LOG ${asset}.${tool} on case ${case_id}: ${
-              logErr instanceof Error ? logErr.message : String(logErr)
-            } — the case record is now incomplete.`
-          );
-        });
-      return errorResult(err);
+server.registerTool(
+  "task_assets",
+  {
+    title: "Task Assets (batch, parallel — the fast path)",
+    description:
+      "Call SEVERAL asset tools AT ONCE, run in parallel, all results recorded. PREFER THIS over multiple task_asset calls: it collapses N sequential round-trips into one turn and runs the asset calls concurrently, which is the single biggest way to cut how long a case takes. Task the chosen specialists AND the research verifier together here. Give a list of {asset, tool, arguments}; each asset must already be assigned. One slow or failing call does not block the others.",
+    inputSchema: {
+      case_id: z.string().min(1),
+      tasks: z
+        .array(
+          z.object({
+            asset: z.string().min(1),
+            tool: z.string().min(1),
+            arguments: z.record(z.any()).optional(),
+          })
+        )
+        .min(1)
+        .max(8)
+        .describe("The asset tool calls to run in parallel (2–8 is the sweet spot)."),
+    },
+  },
+  async ({ case_id, tasks }) => {
+    const caseRecord = await caseStore.getCase(case_id);
+    if (!caseRecord) return errorResult(new Error(`No case with id "${case_id}" found.`));
+    if (caseRecord.status === "closed") return errorResult(new Error(`Case ${case_id} is closed.`));
+    const outcomes = await Promise.all(tasks.map((t) => runOneTask(case_id, caseRecord, t.asset, t.tool, t.arguments)));
+    const content: any[] = [];
+    let anyError = false;
+    for (const o of outcomes) {
+      content.push({ type: "text", text: `--- ${o.asset}.${o.tool}${o.isError ? " (ERROR)" : ""} ---` });
+      content.push(...o.content);
+      if (o.isError) anyError = true;
     }
+    return { content, isError: anyError || undefined };
   }
 );
 
