@@ -63,6 +63,9 @@ import { detectChanges as ghDetect } from "./ghmonitor-mcp/dist/dedup.js";
 import { mapStatus as ghMap, PermissionError as GhPerm, NotFoundError as GhNotFound } from "./ghmonitor-mcp/dist/github.js";
 import { toChunks as dsToChunks, upsert as dsUpsert, removeSource as dsRemove } from "./docsearch-mcp/dist/indexer.js";
 import { serialize as dsSerialize } from "./docsearch-mcp/dist/store.js";
+import { drugLookup as hgDrug } from "./healthguide-mcp/dist/drugs.js";
+import { teamScores as spScores } from "./sports-mcp/dist/scores.js";
+import { cryptoPrice as neCrypto } from "./nestegg-mcp/dist/crypto.js";
 import { search as dsSearch, excerpt as dsExcerpt } from "./docsearch-mcp/dist/engine.js";
 import { dollarsToCents, secFilings, kalshiMarkets } from "./research-mcp/dist/data-sources.js";
 import { corroborationPossible, ALL_PROVIDERS } from "./research-mcp/dist/providers.js";
@@ -1724,6 +1727,20 @@ for (const [name, out] of START_HERE) {
     await Promise.all([bump(), bump(), bump(), bump(), bump()]);
     check("docsearch: serialize prevents lost updates under concurrency", counter === 5);
   }
+}
+
+// ── 22. Free-API live connectors — offline-degradation contract ────────────
+// Network-free: empty input returns BEFORE any fetch, proving each connector
+// ALWAYS yields a BOTTOM LINE and routes to research on failure (the invariant
+// that keeps regression network-free and a dropped connection from breaking a
+// tool). Live API paths are exercised manually, not here.
+{
+  const drug = await hgDrug("");
+  check("healthguide drug_lookup: degrades offline to research + BOTTOM LINE", drug.includes("BOTTOM LINE") && /research/i.test(drug));
+  const sc = await spScores("");
+  check("sports live_scores: degrades offline to research + BOTTOM LINE", sc.includes("BOTTOM LINE") && /research/i.test(sc));
+  const cr = await neCrypto("");
+  check("nestegg crypto_price: degrades offline to research + BOTTOM LINE", cr.includes("BOTTOM LINE") && /research/i.test(cr));
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────

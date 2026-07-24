@@ -7,6 +7,7 @@ import * as calc from "./calculators.js";
 import * as explain from "./explainers.js";
 import * as perspectives from "./perspectives.js";
 import * as analysis from "./analysis.js";
+import { cryptoPrice } from "./crypto.js";
 
 const server = new McpServer({ name: "nestegg", version: "0.1.0" });
 
@@ -421,6 +422,25 @@ server.registerTool(
         `I'm education, not a licensed advisor — I teach the machine and run your numbers; big moves get confirmed with a fee-only fiduciary.`,
       ].join("\n")
     )
+);
+
+server.registerTool(
+  "crypto_price",
+  {
+    title: "Live Crypto Price (CoinGecko, keyless)",
+    description:
+      "Fetch the CURRENT USD price, 24h change, and market cap for a cryptocurrency from the keyless CoinGecko " +
+      "API (bitcoin/ethereum/solana/... or a ticker like btc/eth). Degrades to research if unavailable. Keeps " +
+      "nestegg's discipline: crypto is volatile risk capital, not the retirement base.",
+    inputSchema: { coin: z.string().min(1).max(60).describe("Coin name or ticker, e.g. bitcoin, eth, solana.") },
+  },
+  async ({ coin }) => {
+    try {
+      return textResult(await cryptoPrice(coin));
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
 );
 
 async function main() {

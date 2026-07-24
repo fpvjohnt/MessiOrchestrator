@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { explainSport, startHere } from "./sports.js";
 import { scoutTalent, whatToLookFor, pathway } from "./scouting.js";
+import { teamScores } from "./scores.js";
 
 const server = new McpServer({ name: "sports", version: "0.1.0" });
 
@@ -94,6 +95,25 @@ server.registerTool(
     inputSchema: {},
   },
   async () => textResult(startHere())
+);
+
+server.registerTool(
+  "live_scores",
+  {
+    title: "Live Team Scores & Fixtures (TheSportsDB, keyless)",
+    description:
+      "Fetch a team's RECENT RESULTS and NEXT FIXTURES live from the keyless TheSportsDB API — the current data " +
+      "this asset otherwise routes to research. Give a club/team name. Degrades to research if unavailable; the " +
+      "free tier can lag on in-play scores, so use research for a minute-by-minute live score.",
+    inputSchema: { team: z.string().min(1).max(120).describe("Club/team name, e.g. Arsenal or Los Angeles Lakers.") },
+  },
+  async ({ team }) => {
+    try {
+      return textResult(await teamScores(team));
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
 );
 
 async function main() {

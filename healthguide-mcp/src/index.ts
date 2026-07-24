@@ -11,6 +11,7 @@ import * as hope from "./hope.js";
 import * as redflags from "./redflags.js";
 import * as navigate from "./navigate.js";
 import * as training from "./training.js";
+import { drugLookup } from "./drugs.js";
 
 const server = new McpServer({ name: "healthguide", version: "0.1.0" });
 
@@ -405,6 +406,26 @@ server.registerTool(
         `Emergency numbers, always: 911 (emergency) · 988 (crisis, call or text) · 741741 (crisis text, text HOME) · 1-800-222-1222 (poison control).`,
       ].join("\n")
     )
+);
+
+server.registerTool(
+  "drug_lookup",
+  {
+    title: "Live FDA Drug Lookup (openFDA, keyless)",
+    description:
+      "Fetch CURRENT FDA data for a drug by brand or generic name from the keyless openFDA API: label highlights " +
+      "(boxed warning, indications, warnings), maker, and recent recalls. Degrades to the offline research/verify " +
+      "path if openFDA is unavailable. This is public FDA label data, NOT medical advice — confirm anything " +
+      "actionable with a clinician or the research asset.",
+    inputSchema: { drug: lookupKey.describe("Brand or generic drug name, e.g. Ozempic or semaglutide.") },
+  },
+  async ({ drug }) => {
+    try {
+      return textResult(await drugLookup(drug));
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
 );
 
 async function main() {
