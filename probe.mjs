@@ -47,6 +47,9 @@ const PROBES = [
   // in an unrelated sense
   { q: "convert this paragraph to speech with a natural voice", want: "elevenlabs" },
   { q: "transcribe this audio recording into text", want: "elevenlabs" },
+  // docingest routes on document/pdf/attachment/extract, not generic 'file' senses
+  { q: "extract the tables from this pdf attachment", want: "docingest" },
+  { q: "pull the text out of this scanned document and its attachments", want: "docingest" },
   // claim-check: research rides along as the independent checker, specialist leads
   { q: "is it true that eating carrots improves your night vision", want: "research" },
   { q: "debunk the myth that we only use ten percent of our brain", want: "research" },

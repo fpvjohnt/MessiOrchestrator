@@ -1117,5 +1117,37 @@
     "registeredAt": "2026-07-23T21:00:00.000Z",
     "fallback": false,
     "env": {}
+  },
+  {
+    "name": "docingest",
+    "description": "Document ingestion: retrieve authorized files from a URL, a webpage/Confluence page (with attachment discovery), or connector bytes; detect type by signature; extract text/tables from PDF (OCR-flag for scans), Word/Excel/PowerPoint, CSV/HTML/Markdown/email; return concise, cited, size-limited results. Redacts credentials and neutralizes prompt injection; never bypasses logins.",
+    "tags": [
+      "document",
+      "documents",
+      "pdf",
+      "spreadsheet",
+      "powerpoint",
+      "attachment",
+      "attachments",
+      "confluence",
+      "ingest",
+      "extract",
+      "ocr",
+      "scanned",
+      "docx",
+      "xlsx",
+      "pptx",
+      "upload"
+    ],
+    "transport": "stdio",
+    "command": "node",
+    "args": [
+      "docingest-mcp/dist/index.js"
+    ],
+    "cwd": "/path/to/John MCP",
+    "status": "active",
+    "registeredAt": "2026-07-24T00:00:00.000Z",
+    "fallback": false,
+    "env": {}
   }
 ]
