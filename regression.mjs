@@ -61,6 +61,8 @@ import { summarizeChecks as ghSummarize, conclusionToState as ghConcl, overallOf
 import { summarizeFailure as ghFail, classifyCause as ghClassify, redact as ghRedact } from "./ghmonitor-mcp/dist/analyze.js";
 import { detectChanges as ghDetect } from "./ghmonitor-mcp/dist/dedup.js";
 import { mapStatus as ghMap, PermissionError as GhPerm, NotFoundError as GhNotFound } from "./ghmonitor-mcp/dist/github.js";
+import { toChunks as dsToChunks, upsert as dsUpsert, removeSource as dsRemove } from "./docsearch-mcp/dist/indexer.js";
+import { search as dsSearch, excerpt as dsExcerpt } from "./docsearch-mcp/dist/engine.js";
 import { dollarsToCents, secFilings, kalshiMarkets } from "./research-mcp/dist/data-sources.js";
 import { corroborationPossible, ALL_PROVIDERS } from "./research-mcp/dist/providers.js";
 import { assertPublicUrl } from "./research-mcp/dist/ssrf-guard.js";
@@ -1674,6 +1676,43 @@ for (const [name, out] of START_HERE) {
   check("ghmonitor: redacts a GitHub token", ghRedact("token=ghp_abcdefghijklmnopqrstuvwx1234567890").includes("[REDACTED]") && !ghRedact("ghp_abcdefghijklmnopqrstuvwx1234567890").includes("abcdefghij"));
   check("ghmonitor: conclusion mapping", ghConcl("completed", "success") === "passing" && ghConcl("completed", "cancelled") === "cancelled" && ghConcl("in_progress", null) === "pending" && ghConcl("completed", "skipped") === "skipped");
   check("ghmonitor: overall precedence failing>pending>passing", ghOverall(["passing", "pending", "failing"]) === "failing" && ghOverall(["passing", "pending"]) === "pending" && ghOverall(["passing", "skipped"]) === "passing");
+}
+
+// ── 21. Hybrid document search (docsearch-mcp) ─────────────────────────────
+// Offline: a small in-memory index exercises exact-match, semantic, hybrid,
+// metadata + PERMISSION filtering, update, delete, and citations (requirement 12).
+{
+  const NOW = Date.parse("2026-07-24T00:00:00Z");
+  const mk = (o) => dsToChunks({ sourceId: o.id, title: o.title, url: o.url, sourceType: o.type, mimeType: o.mime, author: o.author, createdAt: o.created, aclScope: o.scope, chunks: o.chunks }, NOW);
+  let ix = [];
+  ix = dsUpsert(ix, mk({ id: "amber-pa", title: "Purchase Agreement from Amber Realty", type: "word", mime: "docx", author: "Amber", created: "2026-06-01T00:00:00Z", chunks: [{ citation: "page 1", text: "This purchase agreement is entered into by Amber for the property at 12 Oak St." }] }), "amber-pa");
+  ix = dsUpsert(ix, mk({ id: "amex", title: "American Express Cardmember Agreement", type: "pdf", mime: "pdf", created: "2026-05-01T00:00:00Z", chunks: [{ citation: "page 4", text: "The APR for purchases is 24.99% variable based on the prime rate." }] }), "amex");
+  ix = dsUpsert(ix, mk({ id: "rev", title: "FY26 Financial Model", type: "spreadsheet", mime: "xlsx", created: "2026-07-01T00:00:00Z", chunks: [{ citation: "sheet Projections", text: "Projected revenue grows to 4.2M by Q4 with renewal risk on two enterprise accounts." }] }), "rev");
+  ix = dsUpsert(ix, mk({ id: "ci1", title: "CI failure run 42", type: "ci", mime: "text/plain", created: "2026-07-20T00:00:00Z", chunks: [{ citation: "run 42", text: "AssertionError: expected 3 to equal 4 in src/math.test.ts deployment failed" }] }), "ci1");
+  ix = dsUpsert(ix, mk({ id: "secret", title: "Board Comp Memo", type: "word", mime: "docx", scope: "exec", created: "2026-07-10T00:00:00Z", chunks: [{ citation: "page 1", text: "Executive compensation and projected revenue for the board only." }] }), "secret");
+
+  check("docsearch: exact filename/symbol match", dsSearch(ix, "src/math.test.ts", { mode: "lexical" })[0]?.chunk.sourceId === "ci1");
+  check("docsearch: exact proper-name match", dsSearch(ix, "purchase agreement from Amber")[0]?.chunk.sourceId === "amber-pa");
+  check("docsearch: exact American Express APR", dsSearch(ix, "American Express APR")[0]?.chunk.sourceId === "amex");
+  check("docsearch: semantic renewal risk", dsSearch(ix, "documents about renewal risk", { mode: "semantic" }).some((r) => r.chunk.sourceId === "rev"));
+  check("docsearch: semantic similar CI failure", dsSearch(ix, "what previous failures look like this CI error", { mode: "semantic" }).some((r) => r.chunk.sourceId === "ci1"));
+  check("docsearch: hybrid finds revenue spreadsheet", dsSearch(ix, "spreadsheets mentioning projected revenue").some((r) => r.chunk.sourceId === "rev"));
+  check("docsearch: filter by source_type", dsSearch(ix, "revenue", { filters: { sourceType: "spreadsheet" } }).every((r) => r.chunk.sourceType === "spreadsheet"));
+  check("docsearch: filter by author", dsSearch(ix, "agreement", { filters: { author: "Amber" } }).every((r) => r.chunk.author === "Amber"));
+  // Permission filtering at QUERY time.
+  check("docsearch: exec-scoped doc hidden by default", !dsSearch(ix, "projected revenue for the board").some((r) => r.chunk.sourceId === "secret"));
+  check("docsearch: exec-scoped doc visible WITH scope", dsSearch(ix, "projected revenue for the board", { authorizedScopes: ["default", "exec"] }).some((r) => r.chunk.sourceId === "secret"));
+  // Citations.
+  const apr = dsSearch(ix, "APR")[0];
+  check("docsearch: result carries a citation", apr && apr.chunk.citation === "page 4" && apr.why.length > 0);
+  // Update / re-index replaces old content.
+  const ix2 = dsUpsert(ix, mk({ id: "amex", title: "American Express Cardmember Agreement", type: "pdf", mime: "pdf", created: "2026-05-01T00:00:00Z", chunks: [{ citation: "page 4", text: "The APR is now 19.99 percent after the update." }] }), "amex");
+  check("docsearch: update replaces content, no stale duplicate", ix2.filter((c) => c.sourceId === "amex").length === 1 && dsSearch(ix2, "APR").some((r) => r.chunk.text.includes("19.99")) && !dsSearch(ix2, "APR").some((r) => r.chunk.text.includes("24.99")));
+  // Delete.
+  const ix3 = dsRemove(ix2, "amex");
+  check("docsearch: delete removes the source", !dsSearch(ix3, "American Express").some((r) => r.chunk.sourceId === "amex"));
+  // Excerpt centers on the matched term (keeps raw docs out).
+  check("docsearch: excerpt centers on the query term", dsExcerpt("lots of filler text and then the APR is 24.99 percent for purchases and more filler", "APR").includes("APR"));
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────

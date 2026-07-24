@@ -1176,5 +1176,31 @@
     "registeredAt": "2026-07-24T00:00:00.000Z",
     "fallback": false,
     "env": {}
+  },
+  {
+    "name": "docsearch",
+    "description": "Hybrid search over previously-ingested content (docs, pages, Confluence, PDFs, spreadsheets, slides, CI records): full-text BM25 for exact phrases/names/IDs/error codes/filenames/code symbols, plus semantic vector search, fused by hybrid ranking with metadata filters and recency. Enforces query-time authorization (never returns content outside your scopes) and returns concise cited excerpts, not whole documents. index_document/delete_source/search/search_stats.",
+    "tags": [
+      "docsearch",
+      "fulltext",
+      "semanticsearch",
+      "hybridsearch",
+      "vectorsearch",
+      "keywordsearch",
+      "reindex",
+      "searchindex",
+      "indexed",
+      "corpussearch"
+    ],
+    "transport": "stdio",
+    "command": "node",
+    "args": [
+      "docsearch-mcp/dist/index.js"
+    ],
+    "cwd": "/path/to/John MCP",
+    "status": "active",
+    "registeredAt": "2026-07-24T00:00:00.000Z",
+    "fallback": false,
+    "env": {}
   }
 ]

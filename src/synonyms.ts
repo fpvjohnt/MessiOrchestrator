@@ -105,6 +105,21 @@ const PHRASES: Record<string, string> = {
   "ci failed": "buildstatus",
   "ci passed": "buildstatus",
 
+  // → docsearch (search the ingested corpus). docingest FETCHES a specific
+  // document; docsearch QUERIES what's already indexed. These phrases are the
+  // search intent. searchindex is a docsearch tag. NOTE: phrase keys are matched
+  // against the STEMMED token stream, so plural words must be written singular
+  // ("documents" folds to "document").
+  "search my document": "searchindex",
+  "search my file": "searchindex",
+  "search my note": "searchindex",
+  "find document about": "searchindex",
+  "document mentioning": "searchindex",
+  "spreadsheet mentioning": "searchindex",
+  "previous failure": "searchindex",
+  "similar deployment": "searchindex",
+  "similar failure": "searchindex",
+
   // → education. "test"/"final"/"material" are all ordinary English words; only
   // the academic phrasing around them means school.
   "prepare for a test": "exam",

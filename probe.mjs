@@ -56,6 +56,10 @@ const PROBES = [
   { q: "what broke after my last push", want: "ghmonitor" },
   // gitforge (GitHub how-to) must still own SETUP intent, not ghmonitor
   { q: "how do I set up a github actions workflow for ci", want: "gitforge", mustNot: "ghmonitor" },
+  // docsearch = query the indexed corpus (search intent)
+  { q: "search my documents for american express apr", want: "docsearch" },
+  { q: "find spreadsheets mentioning projected revenue", want: "docsearch" },
+  { q: "show me similar deployment failures from before", want: "docsearch" },
   // claim-check: research rides along as the independent checker, specialist leads
   { q: "is it true that eating carrots improves your night vision", want: "research" },
   { q: "debunk the myth that we only use ten percent of our brain", want: "research" },

@@ -29,6 +29,7 @@ homebuyer-mcp/data/profile.json
 jobhunt-mcp/data/profile.json
 polymath-mcp/data/work-context.json
 ghmonitor-mcp/data/
+docsearch-mcp/data/
 
 # OAuth server state — registered clients and hashed tokens.
 bridge/oauth-state.json

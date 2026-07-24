@@ -1,0 +1,22 @@
+{
+  "name": "docsearch-mcp",
+  "version": "0.1.0",
+  "description": "Hybrid document search MCP server — indexes normalized ingested content (docs, pages, spreadsheets, slides, CI records) with full-text (BM25) + vector (semantic) search, hybrid ranking, metadata filters, recency weighting, and query-time authorization. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "docsearch-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}
