@@ -22,7 +22,7 @@
 // URL-encoded before it reaches a path or query, so there is no untrusted URL
 // to guard.
 
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 8_000; // was 15s; tightened for latency
 const MAX_RESPONSE_BYTES = 12_000_000; // company_tickers.json alone is ~220KB; filings JSON runs larger
 
 // The SEC REQUIRES a descriptive User-Agent with a contact address on every

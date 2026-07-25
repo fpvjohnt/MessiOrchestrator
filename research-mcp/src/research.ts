@@ -114,7 +114,7 @@ export async function buildDossier(
   const providers = activeProviders(requestedProviders);
   const { results, providerErrors, corroborationMeaningful } = await multiSearch(question, requestedProviders);
 
-  const toFetch = results.slice(0, Math.min(fetchTop, 5));
+  const toFetch = results.slice(0, Math.min(fetchTop, 3)); // was 5; fewer pages = faster fetch + leaner synthesis payload
   const fetched = await Promise.allSettled(toFetch.map((r) => fetchPage(r.url, excerptChars)));
 
   const sources = toFetch.map((r, i) => {

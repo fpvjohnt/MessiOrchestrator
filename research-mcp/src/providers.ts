@@ -36,7 +36,7 @@ export function corroborationPossible(providers: Provider[]): boolean {
 }
 
 const USER_AGENT = "research-mcp/0.1 (+local MCP server)";
-const REQUEST_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 7_000; // was 10s; tightened for latency
 
 function decodeEntities(text: string): string {
   // &amp; decoded LAST so "&amp;lt;" stays literal "&lt;" rather than "<".

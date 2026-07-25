@@ -1,7 +1,7 @@
 import { pinnedFetch } from "./safe-fetch.js";
 
 const USER_AGENT = "research-mcp/0.1 (+local MCP server)";
-const FETCH_TIMEOUT_MS = 15_000;
+const FETCH_TIMEOUT_MS = 8_000; // was 15s; tightened for latency — a page that's slow to respond is dropped rather than making the whole case wait
 // Read at most this many bytes off the wire so a huge or malicious page
 // can't balloon memory; extraction happens on this window only.
 const MAX_DOWNLOAD_BYTES = 1_500_000;
