@@ -5,7 +5,7 @@ import { z } from "zod";
 import * as registry from "./registry.js";
 import * as caseStore from "./case-store.js";
 import * as clientManager from "./client-manager.js";
-import { selectAssets } from "./router.js";
+import { selectAssets, explainRouting } from "./router.js";
 import { checkAssets, renderHealth } from "./health.js";
 import { synthesizeCase, renderOutcome } from "./synthesis.js";
 import type { AssetConfig } from "./types.js";
@@ -24,6 +24,7 @@ const ORCHESTRATOR_INSTRUCTIONS = [
   "PREFER the orchestrator's 'research' asset over ad-hoc/built-in web search, so facts come back corroborated and the work is logged in a case. The ONLY messages that skip open_case are: greetings and pure chit-chat; a clarifying question back to the user; a follow-up you can answer from a case that is already open; or when the user EXPLICITLY says not to use tools. Everything else opens a case.",
   "",
   "FAST PATH (do this to keep cases quick): open_case(objective) → ONE task_assets call that runs the chosen specialists AND the research verifier in PARALLEL → synthesize_case → close_case. Every extra sequential task_asset call is another slow round-trip; batch them. Only fall back to single task_asset for a genuine follow-up that depends on a previous result.",
+  "LOOK AHEAD on a COMPLEX or multi-asset request: call plan_case(objective) FIRST to preview which specialists will be assigned (and why), the near-misses, and the batch flow — so the plan is visible and correctable BEFORE you spend calls. If the routing looks wrong, fix the objective wording or pass preferred_assets. Skip plan_case for a simple single-domain question and just run the fast path.",
   "The orchestrator itself is deterministic and has NO language model — YOU are the reasoning/checker in this loop. Do not stop at the first asset answer when it contains facts.",
   "",
   "THE VERIFY LOOP (run it before giving a final answer whenever the answer contains a CURRENT/LIVE fact — a price, rate, law, limit, statistic, date, model/framework specific — or any checkable factual claim):",
@@ -322,6 +323,57 @@ server.registerTool(
 // Case management — an objective, the assets assigned to it, and the trail
 // of tasked calls and results ("the dossier").
 // ---------------------------------------------------------------------------
+
+server.registerTool(
+  "plan_case",
+  {
+    title: "Plan a Case (preview the next actions before executing)",
+    description:
+      "Look-ahead: preview WHAT WILL HAPPEN for an objective BEFORE opening or executing it. Returns the " +
+      "deterministic routing (which specialists would be assigned and why, plus the runner-up near-misses and why " +
+      "they lost), whether a research verifier will ride along, and the suggested one-batch execution flow. Call " +
+      "this FIRST on a complex or multi-asset request so the plan is visible and correctable — then open_case -> " +
+      "task_assets -> synthesize_case -> close_case. If the routing looks wrong, adjust the objective or pass " +
+      "preferred_assets to open_case. Read-only; changes nothing.",
+    inputSchema: {
+      objective: z.string().min(1).describe("What you're trying to accomplish."),
+      preferred_assets: z.array(z.string()).optional().describe("If set, the plan uses these instead of the auto-routing (same override open_case accepts)."),
+    },
+  },
+  async ({ objective, preferred_assets }) => {
+    try {
+      const all = await registry.listAssets();
+      const active = new Set(all.filter((a) => a.status === "active").map((a) => a.name));
+      const e = explainRouting(objective, all);
+      const assigned = preferred_assets?.length ? preferred_assets.filter((a) => active.has(a)) : e.assigned;
+
+      const lines: string[] = [`CASE: ${objective}`, ``];
+      lines.push(`ROUTING PLAN${preferred_assets?.length ? " (preferred_assets override)" : " (auto-routed)"}:`);
+      if (assigned.length) {
+        for (const name of assigned) {
+          const row = e.candidates.find((c) => c.name === name);
+          lines.push(`  → ${name}${row?.matchedTags.length ? ` (tags: ${row.matchedTags.join(", ")})` : ""}`);
+        }
+      } else {
+        lines.push(`  → (no specialist matched — would fall back to research)`);
+      }
+      const nearMiss = e.candidates.filter((c) => c.verdict !== "assigned").slice(0, 3);
+      if (nearMiss.length) {
+        lines.push(``, `NEAR-MISSES (not assigned):`);
+        for (const c of nearMiss) lines.push(`  ~ ${c.name} — ${c.verdict}${c.matchedTags.length ? ` (tags: ${c.matchedTags.join(", ")})` : ""}`);
+      }
+      lines.push(``, `SUGGESTED EXECUTION:`);
+      lines.push(`  1. open_case(objective${preferred_assets?.length ? `, preferred_assets: [${assigned.join(", ")}]` : ""})`);
+      lines.push(`  2. task_assets — ONE parallel batch across ${assigned.length ? assigned.join(", ") : "research"}${e.verifierAdded && !assigned.includes("research") ? " + research (verifier)" : ""}`);
+      lines.push(`  3. synthesize_case -> close_case (label VERIFIED / UPDATED / UNVERIFIED)`);
+      lines.push(``, e.verifierAdded ? `VERIFY: this objective looks fact-sensitive — research will ride along as the independent checker.` : `VERIFY: evergreen/explanatory — the verify loop can likely be skipped (don't over-verify).`);
+      lines.push(``, `REVIEW THIS PLAN, then execute. If a specialist is wrong or missing, adjust the objective wording or pass preferred_assets.`);
+      return textResult(lines.join("\n"));
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
 
 server.registerTool(
   "open_case",
