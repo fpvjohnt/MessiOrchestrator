@@ -70,6 +70,10 @@ const PROBES = [
   { q: "did my ci build pass", want: "ghmonitor" }, // present-tense reachability
   { q: "are my pull request checks passing", want: "ghmonitor" },
   { q: "monitor errors across my assets", want: "overseer", mustNot: "ghmonitor" }, // own-assets sense
+  // browser automation (Playwright) — interactive web flows, not a single fetch
+  { q: "browse this website and fill out the form for me", want: "browser" },
+  { q: "automate the browser to click through the checkout", want: "browser" },
+  { q: "take a screenshot of this webpage", want: "browser" },
 ];
 
 let pass = 0;

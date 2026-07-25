@@ -1201,5 +1201,32 @@
     "registeredAt": "2026-07-24T00:00:00.000Z",
     "fallback": false,
     "env": {}
+  },
+  {
+    "name": "browser",
+    "description": "Browser automation via Playwright: navigate to websites, snapshot/read rendered pages, click, type, fill and submit forms, take screenshots, and run multi-step web tasks in a real headless browser. Use for interactive web flows that go beyond fetching one document — filling out forms, clicking through checkouts/wizards, scraping JavaScript-rendered pages.",
+    "tags": [
+      "browser",
+      "webbrowser",
+      "browserautomation",
+      "webautomation",
+      "playwright",
+      "formfill",
+      "webscrape",
+      "clickthrough",
+      "headlessbrowser",
+      "screenshot"
+    ],
+    "transport": "stdio",
+    "command": "node",
+    "args": [
+      "node_modules/@playwright/mcp/cli.js",
+      "--headless"
+    ],
+    "cwd": "/path/to/John MCP",
+    "status": "active",
+    "registeredAt": "2026-07-24T00:00:00.000Z",
+    "fallback": false,
+    "env": {}
   }
 ]
