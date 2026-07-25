@@ -19,6 +19,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { ipKeyGenerator } from "express-rate-limit";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import { timingSafeEqual } from "node:crypto";
 import { createProvider } from "./oauth-provider.mjs";
 import { loadEnvFile } from "./load-env.mjs";
 
@@ -343,7 +344,35 @@ const requireAuth = requireBearerAuth({
   resourceMetadataUrl: new URL("/.well-known/oauth-protected-resource/mcp", ISSUER).href,
 });
 
-app.all("/mcp", requireAuth, async (req, res) => {
+// A STATIC, revocable bearer for a non-OAuth MCP client — e.g. an ElevenLabs
+// Conversational AI agent — that can't walk the interactive OAuth passphrase
+// flow the phone uses. It is a SEPARATE credential (MCP_BRIDGE_AGENT_TOKEN):
+// revoke it by unsetting the env var and restarting, with zero effect on the
+// phone's OAuth path. When the header doesn't match, we fall through to the
+// normal OAuth check, so that flow is completely unchanged.
+const AGENT_TOKEN = process.env.MCP_BRIDGE_AGENT_TOKEN?.trim();
+if (AGENT_TOKEN && AGENT_TOKEN.length < 32) {
+  console.error("refusing to start: MCP_BRIDGE_AGENT_TOKEN, if set, must be at least 32 chars");
+  process.exit(1);
+}
+function constEq(a, b) {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
+function authMcp(req, res, next) {
+  if (AGENT_TOKEN) {
+    const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "");
+    if (m && constEq(m[1], AGENT_TOKEN)) {
+      // Minimal auth context; the session machinery below does the real work.
+      req.auth = { token: "agent", clientId: "static-agent", scopes: [], extra: {} };
+      return next();
+    }
+  }
+  return requireAuth(req, res, next);
+}
+
+app.all("/mcp", authMcp, async (req, res) => {
   try {
     const sessionId = req.headers["mcp-session-id"];
     const existing = sessionId ? sessions.get(sessionId) : undefined;
