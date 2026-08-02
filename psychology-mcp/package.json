@@ -1,0 +1,22 @@
+{
+  "name": "psychology-mcp",
+  "version": "0.1.0",
+  "description": "Psychology MCP: the field explained across cognitive, developmental, social, personality, learning & behaviour, clinical theory, biological, kinesics/nonverbal, and research methods — plus a replication-aware verify loop that grades any 'is this true?' claim, and a myth list for the folklore that did not hold up. Explains the field; personal mental health routes to healthguide. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "psychology-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}
