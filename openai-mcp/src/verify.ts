@@ -57,31 +57,94 @@ export function checkOpenai(rawTopic: string): string {
   ].join("\n");
 }
 
+// Grades from the findings instead of printing the tier list and handing the
+// judgement back. See aiforge-mcp/src/verify.ts for the full reasoning: measured
+// over the real case log this function was 88% identical text call-to-call — the
+// most boilerplate-heavy tool in the fleet — because `findings` was echoed for
+// display and never actually read. A tool that restates how to grade has not
+// graded, and the caller who wrote the findings then grades itself.
+// Negation guard — see healthguide-mcp/src/science.ts for the full reasoning.
+// "No official docs found; could not confirm on openai.com" was reporting
+// "official docs ✓" purely because the string openai.com appeared inside the
+// sentence saying it was NOT found.
+const NEGATORS =
+  /\b(?:no|not|none|never|without|lacks?|lacking|absent|nothing|cannot|can't|couldn't|could not|didn't|did not|isn't|is not|aren't|are not|failed to|unable to)\b/;
+
+function positiveText(notes: string): string {
+  return notes
+    .toLowerCase()
+    // Sentence-ending punctuation only. Splitting on EVERY "." shredded
+    // "platform.openai.com" into three fragments and broke URL matching,
+    // silently downgrading a properly-sourced finding to SINGLE-SOURCE.
+    .split(/[;:]|\.(?=\s|$)|\band\b|\bbut\b|,/)
+    .filter((clause) => !NEGATORS.test(clause))
+    .join(" ");
+}
+
+function readSignals(notes: string) {
+  const full = notes.toLowerCase();
+  const pos = positiveText(notes);
+  return {
+    official: /developers?\.openai\.com|platform\.openai\.com|openai\.com\/(?:pricing|docs|changelog)|official (?:doc|documentation)|changelog|api reference/.test(pos),
+    dated: /\b20\d{2}\b|updated (?:on|this)|last updated|as of \w+ \d/.test(pos),
+    corroborated:
+      /several (?:independent )?sources|multiple sources|corroborat|agree/.test(pos) &&
+      !/not cross-checked|one web index|single provider|found by 1 provider/.test(full),
+    // Absence/contradiction claims live in the negated clauses — read full text.
+    contradicted: /contradict|docs say otherwise|no longer|deprecat|superseded|outdated|stale/.test(full),
+    inconclusive: /could not confirm|couldn't confirm|no sources? found|nothing found|docs don't say|not documented|no official/.test(full),
+  };
+}
+
 export function openaiVerdict(rawTopic: string, findings: string): string {
   const topic = clean(rawTopic);
   const notes = clean(findings);
+
+  if (!notes) {
+    return [
+      `OPENAI VERDICT — "${topic}"`,
+      `BOTTOM LINE: UNVERIFIED — no findings were passed, so nothing was graded.`,
+      ``,
+      `Run check_openai, have research run the queries, then call openai_verdict with what came back.`,
+    ].join("\n");
+  }
+
+  const s = readSignals(notes);
+  let label: string;
+  let tier: string;
+  if (s.contradicted) {
+    label = "UPDATED";
+    tier = "CONTRADICTED OR STALE — the docs/changelog say otherwise, or it is visibly outdated. Give the corrected value WITH its source, and say what was wrong. This is a success, not an embarrassment.";
+  } else if (s.inconclusive) {
+    label = "UNVERIFIED";
+    tier = "The docs don't say — a real finding. Do not fill the gap with a confident guess; name the doc page that would settle it.";
+  } else if (s.official && s.dated) {
+    label = "VERIFIED";
+    tier = "OFFICIAL + CURRENT — it is in the official docs and it is dated. This is fact. Give the value and the source.";
+  } else if (s.official) {
+    label = "VERIFIED";
+    tier = "OFFICIAL BUT UNDATED — it is in the docs, but the page's recency is unclear. Usable; flag the recency risk before building on it.";
+  } else if (s.corroborated) {
+    label = "UNVERIFIED";
+    tier = "CORROBORATED SECONDARY — independent sources agree but no official confirmation. A reasonable working assumption; label it as such, do NOT state it as documented.";
+  } else {
+    label = "UNVERIFIED";
+    tier = "SINGLE-SOURCE / BLOG-ONLY — one write-up, no official confirmation. Name it as unconfirmed every time. This is where invented feature names live; do not put it in code before checking the docs.";
+  }
+
   return [
     `OPENAI VERDICT — "${topic}"`,
-    `BOTTOM LINE: grade what research found by SOURCE, not by confidence. Official docs are fact; blogs are leads. Say plainly which tier each claim landed in, and never launder a tier-3 claim into a tier-1 answer by restating it cleanly.`,
+    `BOTTOM LINE: ${label} — ${tier}`,
     ``,
-    `Findings reported: ${notes || "(none provided — pass what research found)"}`,
+    `Graded on what came back: ${[
+      s.official ? "official docs ✓" : "official docs ✗",
+      s.dated ? "dated ✓" : "undated ⚠",
+      s.corroborated ? "corroborated ✓" : "not corroborated ⚠",
+      s.contradicted ? "contradicted/stale ⚠" : "no contradiction found",
+    ].join(" · ")}`,
     ``,
-    `Evidence tiers, strongest to weakest:`,
-    `  1. OFFICIAL + CURRENT — it's in developers.openai.com / the pricing page / the changelog, and it's dated now. This is fact. Build on it.`,
-    `  2. OFFICIAL BUT UNDATED — it's in the docs, but you can't tell how current the page is. Usable; flag the recency risk if you're about to build on it.`,
-    `  3. CORROBORATED SECONDARY — several independent sources agree and none contradict the docs. Reasonable working assumption; label it as such, don't state it as documented.`,
-    `  4. SINGLE-SOURCE / BLOG-ONLY — one write-up, no official confirmation. NAME it as unconfirmed, explicitly, every time. Do not put it in code without checking the docs first. This is where invented feature names live.`,
-    `  5. CONTRADICTED OR STALE — the docs or changelog say otherwise, or it's visibly outdated. Say so and give the correct value with its source.`,
-    ``,
-    `MANDATORY LABEL on the final answer back to John:`,
-    `  • VERIFIED — official docs confirm it. Give the value and the source.`,
-    `  • UPDATED — research found something DIFFERENT from what was assumed. Give the corrected value, its source, and say what was wrong. This is a success, not an embarrassment.`,
-    `  • UNVERIFIED — couldn't confirm it against official sources. Say that out loud and name the doc page that would settle it. Do NOT fill the gap with a confident guess.`,
-    ``,
-    `Two honest endings that aren't "yes" or "no":`,
-    `  • "The docs don't say" — a real finding. It means don't build on it yet, or test it empirically and treat the result as YOUR data point, not a documented guarantee.`,
-    `  • "It changed and nobody announced it loudly" — happens. If the shape moved, the fix is your code, not your memory of the API.`,
-    ``,
-    `If a stored assumption in this asset's own primitives looked stale during this check, say so plainly — this asset is built to be corrected, and a wrong default here quietly costs more than an admitted gap.`,
+    `Never launder a secondary claim into a documented one by restating it cleanly.`,
+    `If a stored assumption in this asset's own primitives looked stale during this check, say so —`,
+    `this asset is built to be corrected, and a wrong default costs more than an admitted gap.`,
   ].join("\n");
 }

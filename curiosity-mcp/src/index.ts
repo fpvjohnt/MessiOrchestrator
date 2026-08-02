@@ -18,7 +18,15 @@ function errorResult(err: unknown) {
 function now(): Date {
   return new Date();
 }
-const lookupKey = z.string().max(120);
+// Sized from data/cases.json, not guessed (AGENTS.md: "do not set a length cap
+// you have not measured"). This was 120 and hard-rejected a real call: 83% of
+// logged objectives are longer than 120 chars, the longest `topic` actually
+// passed was 256, and the longest objective on record is 927. Callers paste the
+// whole objective in as the topic — which is FINE, because resolve() falls back
+// to loose contains-matching, so a long string still finds its field. Rejecting
+// it outright was the only thing that couldn't work. 2000 clears observed
+// traffic 2x and matches polymath's already-corrected `idea` cap.
+const lookupKey = z.string().max(2000);
 
 server.registerTool(
   "explore",

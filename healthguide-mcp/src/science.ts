@@ -40,24 +40,106 @@ export function checkTheScience(rawClaim: string): string {
   ].join("\n");
 }
 
+// Grades from the findings instead of printing the tier list and handing the
+// judgement back. See aiforge-mcp/src/verify.ts for the full reasoning: measured
+// over the real case log this was 82% identical text call-to-call, because
+// `notes` was echoed for display and never read. On a HEALTH claim that matters
+// more than anywhere else — "here is how you would grade this" is exactly the
+// non-answer someone checking a supplement claim cannot use.
+//
+// Deliberately asymmetric: it rounds DOWN. Observational evidence described with
+// causal language stays observational, because the single most common way health
+// claims mislead is an association reported as a cause.
+// Negation guard. Without this the grader reads the WORD and misses the SENSE:
+// "Observational only; no randomized trials identified" matched /randomi[sz]ed/
+// and graded TIER 2, upgrading an association into trial evidence — the precise
+// error this tier list exists to prevent, produced by the tool meant to prevent
+// it. Evidence-STRENGTH signals therefore run only against clauses that are not
+// negated; signals that are themselves about absence read the full text.
+const NEGATORS =
+  /\b(?:no|not|none|never|without|lacks?|lacking|absent|nothing|cannot|can't|couldn't|could not|didn't|did not|isn't|is not|aren't|are not|failed to|unable to|insufficient|lack of)\b/;
+
+function positiveText(notes: string): string {
+  return notes
+    .toLowerCase()
+    // Sentence-ending punctuation only. Splitting on EVERY "." shredded URLs
+    // and decimals ("p=0.03", "nih.gov") into fragments and broke matching.
+    .split(/[;:]|\.(?=\s|$)|\band\b|\bbut\b|,/)
+    .filter((clause) => !NEGATORS.test(clause))
+    .join(" ");
+}
+
+function readSignals(notes: string) {
+  const full = notes.toLowerCase();
+  const pos = positiveText(notes);
+  return {
+    systematic: /cochrane|systematic review|meta-analys/.test(pos),
+    rct: /randomi[sz]ed|\brct\b|controlled trial|double-blind|placebo-controlled/.test(pos),
+    guideline: /\bnih\b|\bwho\b|\befsa\b|\bfda\b|\bcdc\b|\bnhs\b|guideline|major-body|consensus statement/.test(pos),
+    observational: /observational|cohort|case-control|cross-sectional|epidemiolog|associat|correlat/.test(pos),
+    weak: /animal stud|in vitro|mouse|rat stud|small stud|pilot stud|expert opinion|anecdot/.test(pos),
+    // Absence claims: these live IN the negated clauses, so they read full text.
+    none: /testimonial|influencer|no stud|no evidence|marketing claim|blog post/.test(full),
+    disagree: /disagree|conflict|contradict|mixed (?:results|evidence)|inconsistent/.test(full),
+  };
+}
+
 export function scienceVerdict(rawClaim: string, findings: string): string {
   const claim = clean(rawClaim);
   const notes = clean(findings);
+
+  if (!notes) {
+    return [
+      `EVIDENCE VERDICT — "${claim}"`,
+      `BOTTOM LINE: NOT GRADED — no findings were passed, so no evidence was weighed.`,
+      ``,
+      `Run check_the_science, have research run the queries, then call science_verdict with what came back.`,
+    ].join("\n");
+  }
+
+  const s = readSignals(notes);
+  let tier: number;
+  let label: string;
+  if (s.systematic || (s.rct && /multiple|several|many trials/.test(notes.toLowerCase()))) {
+    tier = 1;
+    label = "STRONG — multiple large randomized trials or a systematic review. This is about as good as health evidence gets.";
+  } else if (s.rct || s.guideline) {
+    tier = 2;
+    label = "SOLID, NOT FINAL — a single well-designed trial, or major-body guidance (NIH/WHO/EFSA). Good enough to act on, not good enough to call settled.";
+  } else if (s.observational) {
+    tier = 3;
+    label = "SUGGESTIVE ONLY — observational evidence. It shows an ASSOCIATION, not that one thing causes the other. Do not restate it as cause.";
+  } else if (s.weak) {
+    tier = 4;
+    label = "WEAK / PRELIMINARY — small, animal-only, lab-only, or expert opinion without trials. Interesting, not actionable.";
+  } else if (s.none) {
+    tier = 5;
+    label = "NOT EVIDENCE — testimonials, influencer claims, or no study at all. Say that plainly.";
+  } else {
+    tier = 4;
+    label = "UNCLEAR — nothing in the findings identifies a study design, so the evidence tier cannot be established. Treat as unproven rather than assuming the best.";
+  }
+
+  const notes2: string[] = [];
+  if (s.disagree) notes2.push(`Sources DISAGREE — say so plainly rather than picking the side that reads better.`);
+  if (s.observational && (s.rct || s.systematic)) {
+    notes2.push(`Both trial and observational evidence appeared — be explicit about which part of the claim rests on which.`);
+  }
+
   return [
     `EVIDENCE VERDICT — "${claim}"`,
-    `BOTTOM LINE: grade the evidence tier honestly from what research found — don't round up.`,
+    `BOTTOM LINE: TIER ${tier} — ${label}`,
     ``,
-    `Findings reported: ${notes || "(none provided — pass what research found)"}`,
+    `Graded on what came back: ${[
+      s.systematic ? "systematic review ✓" : null,
+      s.rct ? "randomized trial ✓" : null,
+      s.guideline ? "major-body guidance ✓" : null,
+      s.observational ? "observational ⚠" : null,
+      s.weak ? "small/animal/opinion ⚠" : null,
+      s.none ? "no study ⚠" : null,
+    ].filter(Boolean).join(" · ") || "no study design identified"}`,
+    ...(notes2.length ? [``, ...notes2.map((n) => `  • ${n}`)] : []),
     ``,
-    `Evidence tiers, strongest to weakest:`,
-    `  1. Multiple large randomized trials / a Cochrane systematic review — strongest.`,
-    `  2. A single well-designed randomized trial, or major-body guidance (NIH/WHO/EFSA) — solid but not final word.`,
-    `  3. Observational studies only (show association, not proof of cause) — suggestive, not conclusive.`,
-    `  4. Small studies, animal/lab-only studies, or expert opinion without trials — weak, preliminary.`,
-    `  5. Testimonials, influencer claims, or no study at all — not evidence.`,
-    ``,
-    `Where sources from different countries agree, that's a stronger signal than any one source alone. Where they disagree, say so plainly rather than picking a side.`,
-    ``,
-    `This grades the SCIENCE, not your specific situation — a real doctor or dietitian still needs to weigh in on how it applies to you.`,
+    `This grades the SCIENCE, not your situation — a real doctor or dietitian still has to weigh in on how it applies to you.`,
   ].join("\n");
 }

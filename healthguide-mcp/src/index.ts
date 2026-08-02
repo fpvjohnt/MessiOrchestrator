@@ -25,7 +25,13 @@ function errorResult(err: unknown) {
 function now(): Date {
   return new Date();
 }
-const lookupKey = z.string().max(200);
+// Sized from data/cases.json, not guessed (AGENTS.md: "do not set a length cap
+// you have not measured"). Measured on 107 real cases: 83% of objectives exceed
+// 120 chars, the longest topic argument actually passed was 256, and the longest
+// objective on record is 927. Callers paste the whole objective in as the topic,
+// which resolve() handles fine via loose contains-match — rejecting it outright
+// was the only outcome that could not work. 2000 clears observed traffic 2x.
+const lookupKey = z.string().max(2000);
 
 // ---------------------------------------------------------------------------
 // The non-suppressible safety gate. Exposed directly, and every other

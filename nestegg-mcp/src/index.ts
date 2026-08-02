@@ -31,7 +31,13 @@ const years = z.number().int().min(1).max(80);
 const pct = z.number().finite().min(0).max(100);
 // Lookup keys are short; cap them so a giant blob can't be echoed back or (via
 // update_reference) persisted into the store and replayed forever.
-const lookupKey = z.string().max(100);
+// Sized from data/cases.json, not guessed (AGENTS.md: "do not set a length cap
+// you have not measured"). Measured on 107 real cases: 83% of objectives exceed
+// 120 chars, the longest topic argument actually passed was 256, and the longest
+// objective on record is 927. Callers paste the whole objective in as the topic,
+// which resolve() handles fine via loose contains-match — rejecting it outright
+// was the only outcome that could not work. 2000 clears observed traffic 2x.
+const lookupKey = z.string().max(2000);
 
 // ---------------------------------------------------------------------------
 // Explainers — kid-simple, chunkable.

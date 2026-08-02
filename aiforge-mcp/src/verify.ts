@@ -47,26 +47,122 @@ export function checkPractice(rawTopic: string): string {
   ].join("\n");
 }
 
+// --- The grader ---
+//
+// This function used to print the full five-tier rubric and hand the judgement
+// back to the caller: `findings` was echoed for display and never read. Measured
+// over the real case log that made it 85% identical text call-to-call — the
+// highest boilerplate ratio of any tool in the fleet, in the one tool whose
+// entire job is to COMMIT. A verdict tool that says "here is how you would grade
+// this" has not graded anything, and the caller, having just written the
+// findings, then grades its own homework. That is the same self-grading defect
+// as the outcome labels, one layer down.
+//
+// It cannot judge meaning — no model here, and AGENTS.md keeps assets
+// deterministic — but the properties that actually separate the tiers are
+// textual and countable: did research reach primary documentation, did anything
+// deprecate, is there a measurement, and did the sources corroborate. So it
+// counts those and commits, then prints ONLY the tier it landed on.
+
+interface Signals {
+  official: boolean;
+  deprecated: boolean;
+  measured: boolean;
+  uncorroborated: boolean;
+  inconclusive: boolean;
+}
+
+// Negation guard — a signal regex reads the WORD, not the SENSE, so "no
+// official documentation" and "no benchmark exists" would otherwise both count
+// as evidence FOR. Positive signals run against non-negated clauses only;
+// signals that are themselves about absence read the full text.
+const NEGATORS =
+  /\b(?:no|not|none|never|without|lacks?|lacking|absent|nothing|cannot|can't|couldn't|could not|didn't|did not|isn't|is not|aren't|are not|failed to|unable to)\b/;
+
+function positiveText(notes: string): string {
+  return notes
+    .toLowerCase()
+    // Sentence-ending punctuation only. Splitting on EVERY "." shredded
+    // "platform.openai.com" into three fragments and broke URL and decimal
+    // matching, silently downgrading a properly-sourced finding.
+    .split(/[;:]|\.(?=\s|$)|\band\b|\bbut\b|,/)
+    .filter((clause) => !NEGATORS.test(clause))
+    .join(" ");
+}
+
+function readSignals(notes: string): Signals {
+  const full = notes.toLowerCase();
+  const pos = positiveText(notes);
+  return {
+    official:
+      /official (?:doc|documentation)|\bdocs?\.|documentation\b|changelog|release notes|api reference|model card/.test(pos),
+    measured: /benchmark|\beval\b|evals\b|measured|latency|throughput|\d+\s*%|cost per|tokens\/s|p95|ablation/.test(pos),
+    // Absence/negative findings live in the negated clauses — read full text.
+    deprecated: /deprecat|superseded|no longer (?:supported|available)|removed in|breaking change|end of life|sunset/.test(full),
+    uncorroborated: /not cross-checked|one web index|single provider|found by 1 provider|uncorroborated/.test(full),
+    inconclusive: /could not confirm|couldn't confirm|no sources? found|nothing found|inconclusive|unclear|no official/.test(full),
+  };
+}
+
 export function practiceVerdict(rawTopic: string, findings: string): string {
   const topic = clean(rawTopic);
   const notes = clean(findings);
+
+  if (!notes) {
+    return [
+      `PRACTICE VERDICT — "${topic}"`,
+      `BOTTOM LINE: UNVERIFIED — no findings were passed, so nothing was graded.`,
+      ``,
+      `This tool grades what research actually returned. Run check_practice, have research`,
+      `run the queries, then call practice_verdict again with the findings.`,
+    ].join("\n");
+  }
+
+  const s = readSignals(notes);
+
+  // Commit to a label. Order matters: a deprecation finding outranks everything
+  // else, because "it works" and "it was removed" cannot both be acted on.
+  let label: string;
+  let tier: string;
+  if (s.deprecated) {
+    label = "UPDATED";
+    tier = "Outdated/deprecated — the sources show the assumed approach is superseded. Do not build on it; use the replacement the sources name.";
+  } else if (s.inconclusive || (!s.official && !s.measured)) {
+    label = "UNVERIFIED";
+    tier = "Hype or unconfirmed — no primary documentation and no measurement came back. Treat as unproven; do not repeat it as fact.";
+  } else if (s.official && s.measured) {
+    label = "VERIFIED";
+    tier = "Documented + measured — primary docs confirm the current shape AND there are numbers. Trust it, and say what the numbers were.";
+  } else if (s.official) {
+    label = "VERIFIED";
+    tier = "Documented, lightly measured — the API/shape is current and sourced, but nothing shows it BEATS the simpler option. Fine to use; do not over-claim.";
+  } else {
+    label = "UNVERIFIED";
+    tier = "Promising but unproven — there is a measurement but no primary documentation behind it. Try it behind your own eval; do not bet production on it.";
+  }
+
+  const caveats: string[] = [];
+  if (s.uncorroborated) {
+    caveats.push(`Sources were NOT independently corroborated (single index/provider) — carry that caveat into the answer.`);
+  }
+  if (label === "VERIFIED" && !s.measured) {
+    caveats.push(`No measurement came back, so "it works" is documented but "it's better" is not. Say which one you mean.`);
+  }
+
   return [
     `PRACTICE VERDICT — "${topic}"`,
-    `BOTTOM LINE: grade how well-supported and how CURRENT this is from what research found — separate what's DOCUMENTED and MEASURED from what's just hyped or already deprecated. Recommend the simplest thing that's proven to work.`,
+    `BOTTOM LINE: ${label} — ${tier}`,
     ``,
-    `Findings reported: ${notes || "(none provided — pass what research found)"}`,
+    `Graded on what came back: ${[
+      s.official ? "primary docs ✓" : "primary docs ✗",
+      s.measured ? "measurement ✓" : "measurement ✗",
+      s.deprecated ? "deprecation flagged ⚠" : "no deprecation found",
+      s.uncorroborated ? "single-source ⚠" : "corroborated",
+    ].join(" · ")}`,
+    ...(caveats.length ? [``, `CAVEATS:`, ...caveats.map((c) => `  • ${c}`)] : []),
     ``,
-    `Evidence tiers, strongest to weakest:`,
-    `  1. Documented + measured — official docs confirm the CURRENT API/shape AND there are real evals (cost + failure rate, not just a win). Trust it.`,
-    `  2. Documented, lightly measured — the API is current and sound, but the evidence it BEATS the simpler option is thin. Fine to use; don't over-claim.`,
-    `  3. Promising but unproven — an interesting technique/paper with limited independent replication. Try it behind an eval; don't bet production on it.`,
-    `  4. Hype — buzz, no numbers, maybe already deprecated. Unverified until you see docs + evals.`,
-    `  5. Outdated/deprecated — the docs/releases show it's superseded (e.g. a pre-1.0 LangChain API, an old fine-tuning method). Don't build on it.`,
-    ``,
-    `Two honest endings that aren't "good" or "bad":`,
-    `  • "The simpler thing still wins" — often prompting beats fine-tuning, plain vector search beats the fancy retriever, a small encoder beats the LLM. That's a real, valuable finding.`,
-    `  • "It depends on your eval" — the right choice is whatever measurably wins on YOUR task and data, not what's trending. Point back to fm_evaluation.`,
-    ``,
-    `Label the answer VERIFIED (docs confirm current + evidence), UPDATED (research found a newer/different current API than assumed — give the corrected one + source), or UNVERIFIED (couldn't confirm — say so). This grades the evidence and the recency, not the enthusiasm.`,
+    `Recommend the SIMPLEST thing the evidence supports. "The simpler thing still wins" —`,
+    `prompting over fine-tuning, plain vector search over the fancy retriever — is a real`,
+    `finding, not a cop-out. State the recommendation; do not hand the judgement back.`,
   ].join("\n");
 }
