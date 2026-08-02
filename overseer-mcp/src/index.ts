@@ -11,6 +11,7 @@ import { analyzeErrors } from "./errors.js";
 import { detectAnswerDrift } from "./answer-drift.js";
 import { outcomeReport } from "./outcome.js";
 import { latencyReport } from "./latency.js";
+import { exportFailures } from "./dataset.js";
 import type { AssetConfig, Case } from "./types.js";
 
 const server = new McpServer({ name: "overseer", version: "0.1.0" });
@@ -104,7 +105,7 @@ server.registerTool(
       "system's behavior changing under you (a fix, or a regression). Groups cases by objective similarity " +
       "and flags any group whose assigned assets weren't consistent. Deterministic, no model call.",
     inputSchema: {
-      similarity: z.number().min(0.1).max(1).optional().describe("Token-overlap threshold to call two questions 'the same' (default 0.6). Lower = looser grouping."),
+      similarity: z.number().min(0.1).max(1).optional().describe("Containment threshold to call two questions 'the same' (default 0.6) — the share of the SHORTER question's subject words that also appear in the longer one. Lower = looser grouping."),
       min_group: z.number().int().min(2).max(50).optional().describe("Minimum repeats before a question is checked for drift (default 2)."),
       ...pathParams,
     },
@@ -134,6 +135,37 @@ server.registerTool(
       const path = resolvePath(cases_path, DEFAULT_CASES_PATH);
       const cases = await loadJsonArray<Case>(path);
       return textResult(analyzeErrors(cases, asset));
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.registerTool(
+  "export_failures",
+  {
+    title: "Export the Failure Corpus",
+    description:
+      "BOTTOM LINE tool: turn every failed call in the case log into a LABELED DATASET — the one dataset this " +
+      "system can honestly harvest from its own experience. Each row is (what was called, how it failed, what " +
+      "would have worked), classified into unknown_tool / too_long / missing_required_arg / wrong_type / " +
+      "not_assigned / http_fetch_failed / timeout / upstream_auth, and split into ACTIONABLE (a schema or " +
+      "naming defect you can fix) vs environmental. Unlike outcome labels — which the agent assigns to its own " +
+      "work and which have therefore never once said 'no' — these are labeled by the RUNTIME: a schema either " +
+      "rejected the call or it did not. Nothing here can flatter the system that produced it. Length failures " +
+      "report the declared cap next to the longest call actually attempted, which is the measurement AGENTS.md " +
+      "requires before setting a cap. Pass format:'jsonl' for machine-readable rows.",
+    inputSchema: {
+      asset: z.string().min(1).max(100).optional().describe("Only this asset's failures."),
+      format: z.enum(["summary", "jsonl"]).optional().describe("'summary' (default, human-readable) or 'jsonl' (one JSON object per line)."),
+      ...pathParams,
+    },
+  },
+  async ({ asset, format, cases_path }) => {
+    try {
+      const path = resolvePath(cases_path, DEFAULT_CASES_PATH);
+      const cases = await loadJsonArray<Case>(path);
+      return textResult(exportFailures(cases, { asset, format: format ?? "summary" }));
     } catch (err) {
       return errorResult(err);
     }

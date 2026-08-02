@@ -59,13 +59,49 @@ export function outcomeReport(cases: Case[]): string {
       ? `\nNote: only ${labeled.length} labeled case(s) — treat these as directional, not statistical. The number gets trustworthy as labeling coverage grows.`
       : ``;
 
+  // --- Degenerate-label detection ---
+  //
+  // 100% coverage and a 100% resolution rate is not a good score; it is a
+  // BROKEN INSTRUMENT, and reporting it as a score is the most consequential
+  // lie this file could tell. A classifier that has never once emitted the
+  // negative class carries zero information: you cannot distinguish "routing
+  // works" from "nothing is ever marked wrong", because both produce this
+  // exact output. The cause is structural — the same agent that runs a case
+  // also closes it, so close_case is self-grading, and graders do not fail
+  // themselves. This warning goes ABOVE the numbers, because a reader who
+  // sees "100%" first has already drawn the wrong conclusion.
+  const negatives = (tally.get("unresolved") ?? 0) + (tally.get("misrouted") ?? 0);
+  const degenerate = negatives === 0 && labeled.length >= 10;
+  const warning = degenerate
+    ? [
+        `⚠ DEGENERATE LABELS — READ THIS BEFORE THE NUMBERS`,
+        `  ${labeled.length} labeled cases, ZERO marked 'unresolved' or 'misrouted'. Not one, ever.`,
+        `  A label that has never once said "no" cannot say "yes" either — the ${resolutionRate}% below`,
+        `  measures nothing. Treat routing quality as UNMEASURED, not as good.`,
+        `  Root cause: whoever runs the case also closes it, so the metric grades its own work.`,
+        `  To get a real signal, do ONE of these:`,
+        `    - have a party that did NOT run the case assign the outcome, or`,
+        `    - label a random sample blind (read objective + result, hide the old label), or`,
+        `    - at minimum, use 'misrouted' + should_have_routed_to the next time routing is wrong;`,
+        `      that field is the one piece of ground truth no test set can generate.`,
+        ``,
+      ]
+    : [];
+
+  const rateLine = degenerate
+    ? `Resolution rate (resolved+partial): ${resolutionRate}% of labeled — NOT A QUALITY SIGNAL, see warning above`
+    : `Resolution rate (resolved+partial): ${resolutionRate}% of labeled`;
+
   return [
     ...header,
     ``,
-    `Resolution rate (resolved+partial): ${resolutionRate}% of labeled`,
+    ...warning,
+    rateLine,
     ...tallyLines,
     ``,
-    `BY ASSET (good = resolved+partial):`,
+    degenerate
+      ? `BY ASSET (good = resolved+partial) — every asset reads 100% for the reason above; this ranks nothing:`
+      : `BY ASSET (good = resolved+partial):`,
     ...assetLines,
     caveat,
   ].join("\n");
