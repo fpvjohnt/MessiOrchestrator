@@ -1,6 +1,8 @@
 node_modules/
 dist/
 *.log
+# Stderr redirect files from start.cmd-style launchers (dashboard/server.err).
+*.err
 
 # Incremental-build caches (tsc --incremental). Land at package roots, not dist/.
 *.tsbuildinfo

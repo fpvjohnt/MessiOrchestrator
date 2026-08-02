@@ -55,6 +55,23 @@ export function interpretBridge(probe, { sessionIdleMs } = {}) {
       };
     }
   }
+
+  // The stateless bridge reports a worker pool instead of sessions. A pool
+  // running short is the equivalent of the stalled reaper above: it is still
+  // answering, so this is DEGRADED, not DOWN — but it is one worker death away
+  // from an outage and nothing else would say so. (A bridge with zero live
+  // workers fails the ok:true check above, so it reads as DOWN already.)
+  const pool = probe.body.pool;
+  if (pool && typeof pool.live === "number" && typeof pool.size === "number") {
+    if (pool.live < pool.size) {
+      return {
+        state: DEGRADED,
+        reason: `${pool.live}/${pool.size} orchestrator workers warm${pool.restarts ? `, ${pool.restarts} restart(s)` : ""}`,
+      };
+    }
+    return { state: UP, reason: `${pool.live}/${pool.size} workers, ${pool.inFlight ?? 0} in flight` };
+  }
+
   return { state: UP, reason: `${probe.body.sessions} session(s)` };
 }
 

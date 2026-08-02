@@ -5,16 +5,18 @@
 // out-of-process means the Desktop stdio path in src/index.ts stays untouched
 // and can't be broken by anything in here.
 //
-// One child orchestrator per HTTP session, torn down when the session closes.
+// STATELESS: /mcp accepts a POST carrying one JSON-RPC message and answers it in
+// the same response. No session ids, no SSE, nothing retained between requests.
+// Requests are load-balanced across a fixed pool of warm orchestrators — see
+// worker-pool.mjs for why that is safe and what it replaced.
 //
 // Auth is Cloudflare Access at the edge, so this binds to 127.0.0.1 ONLY and is
 // never reachable from the LAN. cloudflared connects out; nothing dials in.
 import express from "express";
-import { randomUUID } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { WorkerPool } from "./worker-pool.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { ipKeyGenerator } from "express-rate-limit";
@@ -51,107 +53,27 @@ if (!PASSPHRASE || PASSPHRASE.length < 32) {
   process.exit(1);
 }
 
-// sessionId -> { http, child, lastSeen }
-const sessions = new Map();
-
-// A session is torn down only on an explicit client DELETE or child death.
-// Claude's connector does neither — it just stops talking — so every phone
-// session used to stay resident for the life of the bridge, holding an
-// orchestrator and (once anything fans out across the assets) its 21 child
-// servers with it: ~1.5GB per warmed session, and 61 of them accumulated in a
-// single bridge lifetime before this was found. Sessions are cheap to
-// re-establish and the connector reopens one on demand, so reaping an idle one
-// costs the user nothing.
-// Overridable so the reaper is testable without a 30-minute test.
-const SESSION_IDLE_MS = Number(process.env.MCP_BRIDGE_SESSION_IDLE_MS ?? 30 * 60 * 1000);
-// Grace period for a child whose initialize never lands. Until
-// onsessioninitialized fires there is no sessionId, so it is absent from the
-// map AND both onclose guards below no-op — nothing in the process holds a
-// reference and only a PID kill would reap it.
-const HANDSHAKE_GRACE_MS = Number(process.env.MCP_BRIDGE_HANDSHAKE_GRACE_MS ?? 60 * 1000);
-// Hard ceiling on concurrent sessions. The idle reaper bounds sessions over
-// TIME but nothing bounded them at an INSTANT: the log shows three opened in 26
-// seconds, and each session is an orchestrator that can warm all 22 assets at
-// ~80MB apiece. Eleven concurrent sessions is ~19GB. When the cap is hit the
-// OLDEST is reaped, because a single user's newest session is the one they are
-// actually looking at.
-const MAX_SESSIONS = Math.max(1, Number(process.env.MCP_BRIDGE_MAX_SESSIONS ?? 4));
+// How many orchestrators to keep warm. This is now the ONLY thing that decides
+// how much memory the bridge can occupy — roughly 1.5GB per fully warmed worker
+// once it has fanned out across the assets. Two is comfortable for one person
+// with a phone and a desktop talking at once.
+const POOL_SIZE = Math.max(1, Number(process.env.MCP_BRIDGE_WORKERS ?? 2));
+// A research case can legitimately run for minutes; this only has to be shorter
+// than "forever" so a wedged worker cannot pin a request permanently.
+const REQUEST_TIMEOUT_MS = Number(process.env.MCP_BRIDGE_REQUEST_TIMEOUT_MS ?? 10 * 60 * 1000);
 
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
 }
 
-/**
- * Which sessions to reap to get back under MAX_SESSIONS, oldest-first.
- * `keepId` (the session that just handshook) is never a candidate — the user is
- * looking at that one.
- */
-function sessionsOverCap(keepId) {
-  const candidates = [...sessions.entries()]
-    .filter(([id]) => id !== keepId)
-    .sort((a, b) => a[1].lastSeen - b[1].lastSeen)
-    .map(([id]) => id);
-  const excess = sessions.size - MAX_SESSIONS;
-  return excess > 0 ? candidates.slice(0, excess) : [];
-}
-
-async function closeSession(sessionId) {
-  const entry = sessions.get(sessionId);
-  if (!entry) return;
-  sessions.delete(sessionId);
-  // Close the child first so the orchestrator runs its own stdin-EOF shutdown
-  // and reaps its connected asset servers, instead of being orphaned.
-  await entry.child.close().catch((err) => log("child close failed:", err));
-  await entry.http.close().catch((err) => log("http close failed:", err));
-  log(`session ${sessionId} closed (${sessions.size} active)`);
-}
-
-async function openSession() {
-  const child = new StdioClientTransport({
-    command: process.execPath,
-    args: [resolve(ROOT, "dist/index.js")],
-    cwd: ROOT,
-    stderr: "inherit",
-  });
-
-  const http = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-    onsessioninitialized: (sessionId) => {
-      clearTimeout(handshakeTimer);
-      sessions.set(sessionId, { http, child, lastSeen: Date.now() });
-      log(`session ${sessionId} opened (${sessions.size} active)`);
-      // Evict oldest-first until under the cap. Done AFTER inserting so the new
-      // session is never the one reaped, and awaited nowhere — a slow child
-      // close must not delay the handshake that just succeeded.
-      for (const id of sessionsOverCap(sessionId)) {
-        log(`session cap ${MAX_SESSIONS} reached — reaping oldest session ${id}`);
-        void closeSession(id); // closeSession removes it from the map itself
-      }
-    },
-  });
-
-  // Closes the child directly rather than via closeSession, which looks the
-  // session up by an id that by definition doesn't exist yet.
-  const handshakeTimer = setTimeout(() => {
-    if (http.sessionId) return;
-    log("initialize never completed — closing orphaned child");
-    void child.close().catch((err) => log("orphan child close failed:", err));
-    void http.close().catch((err) => log("orphan http close failed:", err));
-  }, HANDSHAKE_GRACE_MS);
-  handshakeTimer.unref();
-
-  // Pure transport-level relay. Neither side needs to understand the protocol,
-  // which is why this survives orchestrator changes without edits.
-  http.onmessage = (msg) => child.send(msg).catch((err) => log("-> child failed:", err));
-  child.onmessage = (msg) => http.send(msg).catch((err) => log("-> http failed:", err));
-
-  http.onclose = () => { if (http.sessionId) void closeSession(http.sessionId); };
-  child.onclose = () => { if (http.sessionId) void closeSession(http.sessionId); };
-  child.onerror = (err) => log("child error:", err);
-
-  await child.start();
-  return http;
-}
+const pool = new WorkerPool({
+  size: POOL_SIZE,
+  command: process.execPath,
+  args: [resolve(ROOT, "dist/index.js")],
+  cwd: ROOT,
+  log,
+  requestTimeoutMs: REQUEST_TIMEOUT_MS,
+});
 
 const app = express();
 app.use(express.json({ limit: "8mb" }));
@@ -246,22 +168,11 @@ app.use(
   })
 );
 
-// Reap sessions the client walked away from. unref'd so it never holds the
-// process open on its own.
-setInterval(() => {
-  const cutoff = Date.now() - SESSION_IDLE_MS;
-  for (const [sessionId, entry] of sessions) {
-    if (entry.lastSeen <= cutoff) {
-      log(`session ${sessionId} idle ${Math.round((Date.now() - entry.lastSeen) / 1000)}s — reaping`);
-      void closeSession(sessionId);
-    }
-  }
-  // Sweep every minute in production; never slower than the TTL itself, so a
-  // short test TTL doesn't sit through a full minute waiting for a pass.
-}, Math.min(60_000, SESSION_IDLE_MS)).unref();
+// The idle-session reaper, the session cap and the handshake-grace timer all
+// lived here. All three existed to bound processes that client behaviour was
+// allowed to create. The pool bounds that by construction, so none of them have
+// anything left to do.
 
-// oldestIdleMin is the number to alert on: it climbing past SESSION_IDLE_MS
-// means the reaper has stopped working.
 // Whether the ORCHESTRATOR the bridge serves can actually answer, not just
 // whether this Express process is up. The old /healthz was a static ok:true —
 // so a bridge whose dist/index.js was broken (a bad build, a syntax error, a
@@ -318,13 +229,20 @@ async function deepProbe() {
 }
 
 app.get("/healthz", async (req, res) => {
-  const now = Date.now();
-  const idleMins = [...sessions.values()].map((s) => Math.round((now - s.lastSeen) / 60000));
+  const pooled = pool.stats();
   const base = {
-    sessions: sessions.size,
-    oldestIdleMin: idleMins.length ? Math.max(...idleMins) : 0,
+    stateless: true,
+    pool: pooled,
+    // Kept so anything already scraping this field does not start reading
+    // undefined; a stateless bridge simply never has sessions.
+    sessions: 0,
     uptime: Math.round(process.uptime()),
   };
+  // A bridge whose workers have all died is not healthy even if the port is up.
+  if (pooled.live === 0) {
+    res.status(503).json({ ok: false, serving: false, detail: "no warm orchestrator", ...base });
+    return;
+  }
   // Shallow by default (fast, for casual checks); ?deep=1 runs the real probe.
   // The supervisor uses deep — it is the one caller that must know the
   // orchestrator can serve, not just that the port is open.
@@ -372,47 +290,89 @@ function authMcp(req, res, next) {
   return requireAuth(req, res, next);
 }
 
-app.all("/mcp", authMcp, async (req, res) => {
-  try {
-    const sessionId = req.headers["mcp-session-id"];
-    const existing = sessionId ? sessions.get(sessionId) : undefined;
+// ---------------------------------------------------------------- /mcp
+// STATELESS. One POST carries one JSON-RPC message (or a batch) and gets its
+// answer in the same response body. There is no session id, no SSE stream, and
+// nothing on this process that a later request depends on — which is what lets
+// the pool route consecutive calls to whichever worker is free, and would let a
+// second bridge run behind a real load balancer without sticky sessions.
+//
+// The handshake is terminated HERE rather than forwarded. Workers are already
+// initialized when the pool warms them, and an MCP server accepts initialize
+// once per connection, so replaying a client's handshake at a worker would be
+// an error. Answering from the pool's stored result is what a stateless proxy
+// is supposed to do.
+function jsonRpcError(id, code, message) {
+  return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
+}
 
-    if (existing) {
-      existing.lastSeen = Date.now();
-      await existing.http.handleRequest(req, res, req.body);
-      return;
+async function handleOne(msg) {
+  if (!msg || msg.jsonrpc !== "2.0" || typeof msg.method !== "string") {
+    return jsonRpcError(msg?.id, -32600, "Invalid Request");
+  }
+  // Notifications get no reply, by definition.
+  if (msg.id === undefined || msg.id === null) {
+    if (msg.method !== "notifications/initialized") await pool.notify(msg);
+    return null;
+  }
+  if (msg.method === "initialize") {
+    const info = pool.serverInfo;
+    if (!info) return jsonRpcError(msg.id, -32603, "No orchestrator is warm yet");
+    return { jsonrpc: "2.0", id: msg.id, result: info };
+  }
+  if (msg.method === "ping") return { jsonrpc: "2.0", id: msg.id, result: {} };
+  try {
+    return await pool.request(msg);
+  } catch (err) {
+    log(`dispatch failed (${msg.method}):`, err?.message ?? err);
+    return jsonRpcError(msg.id, -32603, err?.message ?? "Bridge error");
+  }
+}
+
+// Only POST. GET is how the old transport opened an SSE stream and DELETE is
+// how it closed a session; with neither concept left, answering them would be a
+// lie. 405 with Allow: POST is the honest response and tells a client to fall
+// back to plain request/response.
+app.get("/mcp", (req, res) => res.set("Allow", "POST").status(405)
+  .json(jsonRpcError(null, -32601, "This bridge is stateless: POST only, no SSE stream")));
+app.delete("/mcp", (req, res) => res.set("Allow", "POST").status(405)
+  .json(jsonRpcError(null, -32601, "This bridge is stateless: there is no session to delete")));
+
+app.post("/mcp", authMcp, async (req, res) => {
+  try {
+    const body = req.body;
+    if (Array.isArray(body)) {
+      const replies = (await Promise.all(body.map(handleOne))).filter(Boolean);
+      if (!replies.length) return res.status(202).end();
+      return res.json(replies);
     }
-    if (sessionId) {
-      res.status(404).json({
-        jsonrpc: "2.0",
-        error: { code: -32001, message: "Unknown or expired session" },
-        id: null,
-      });
-      return;
-    }
-    // No session header: must be an initialize request, which opens one.
-    const http = await openSession();
-    await http.handleRequest(req, res, req.body);
+    const reply = await handleOne(body);
+    if (!reply) return res.status(202).end();
+    return res.json(reply);
   } catch (err) {
     log("request failed:", err);
-    if (!res.headersSent) {
-      res.status(500).json({
-        jsonrpc: "2.0",
-        error: { code: -32603, message: "Bridge error" },
-        id: null,
-      });
-    }
+    if (!res.headersSent) res.status(500).json(jsonRpcError(null, -32603, "Bridge error"));
   }
 });
 
+// Warm the pool BEFORE opening the port. A bridge that accepts connections it
+// cannot serve is exactly the "green light, dark phone" failure this system has
+// been bitten by before; better to stay down and let the supervisor restart.
+try {
+  await pool.start();
+} catch (err) {
+  console.error("refusing to start: no orchestrator would warm —", err?.message ?? err);
+  process.exit(1);
+}
+
 const server = app.listen(PORT, HOST, () => {
-  log(`orchestrator bridge on http://${HOST}:${PORT}/mcp`);
+  log(`orchestrator bridge on http://${HOST}:${PORT}/mcp — stateless, ${POOL_SIZE} worker(s)`);
 });
 
 async function shutdown() {
   log("shutting down…");
   server.close();
-  await Promise.all([...sessions.keys()].map(closeSession));
+  await pool.close();
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

@@ -1,0 +1,1890 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>World Intel Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{
+    --bg:#070b10; --panel:#0e141c; --panel2:#0b1017; --line:#1b2735;
+    --ink:#e6edf5; --dim:#8b9bb0; --faint:#5b6b80;
+    --up:#3fb950; --down:#f85149; --warn:#d29922; --accent:#3fd0ff; --dead:#3a4250;
+    --hud:rgba(8,14,20,.82); --hudline:rgba(63,208,255,.28);
+    --radius:10px;
+    --mono:"Cascadia Mono",Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;
+         padding:11px 18px;border-bottom:1px solid var(--line);background:var(--panel2);
+         position:sticky;top:0;z-index:900}
+  header h1{font-size:15px;margin:0;letter-spacing:2.5px;font-weight:600;white-space:nowrap;
+            font-family:var(--mono);color:var(--accent)}
+  header .spacer{flex:1}
+  .ctl{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--dim)}
+  input,button,select{background:var(--panel);color:var(--ink);border:1px solid var(--line);
+        border-radius:6px;padding:6px 10px;font:inherit}
+  button{cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  input[type=range]{padding:0;width:100px;accent-color:var(--accent);background:none;border:none}
+  .clock{color:var(--dim);font-size:12px;white-space:nowrap;font-family:var(--mono)}
+
+  /* ---- free-form panel canvas -------------------------------------------
+     Panels are absolutely positioned: drag the title bar to move, drag any
+     corner or edge to resize. X and width are stored as a fraction of the
+     canvas so the arrangement survives a window resize; Y and height are
+     pixels. Everything persists per browser. */
+  .wrap{position:relative;padding:14px;display:block}
+  .card{position:absolute;background:var(--panel);border:1px solid var(--line);
+        border-radius:var(--radius);overflow:hidden;min-width:0;
+        display:flex;flex-direction:column}
+  .card > h2{margin:0;padding:calc(10px * var(--dens,1)) 14px;
+        font-size:calc(13px * var(--dens,1));font-weight:600;letter-spacing:.3px;
+        border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;
+        flex:none;cursor:move;user-select:none}
+  .card > h2 .meta{margin-left:auto;font-weight:400;font-size:11px;color:var(--faint);
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card > .tabs,.card > .toolbar{flex:none}
+  .body{padding:calc(12px * var(--dens,1)) 14px;flex:1;overflow:auto;min-height:0}
+  .card .mapwrap{flex:1;min-height:0}
+  #map{height:100%;min-height:0}
+  .card.folded{height:auto !important}
+  .card.folded > .body,.card.folded > .tabs,.card.folded .mapwrap,
+  .card.folded .toolbar{display:none}
+  .card.hidden{display:none}
+  .card.moving{opacity:.9;z-index:800;box-shadow:0 10px 34px rgba(0,0,0,.6);
+        outline:1px solid var(--accent)}
+
+  /* eight grab zones: four corners and four edges */
+  .rz{position:absolute;z-index:30}
+  .rz.nw{left:-2px;top:-2px;width:16px;height:16px;cursor:nwse-resize}
+  .rz.ne{right:-2px;top:-2px;width:16px;height:16px;cursor:nesw-resize}
+  .rz.sw{left:-2px;bottom:-2px;width:16px;height:16px;cursor:nesw-resize}
+  .rz.se{right:-2px;bottom:-2px;width:16px;height:16px;cursor:nwse-resize}
+  .rz.n{left:16px;right:16px;top:-2px;height:7px;cursor:ns-resize}
+  .rz.s{left:16px;right:16px;bottom:-2px;height:7px;cursor:ns-resize}
+  .rz.w{top:16px;bottom:16px;left:-2px;width:7px;cursor:ew-resize}
+  .rz.e{top:16px;bottom:16px;right:-2px;width:7px;cursor:ew-resize}
+  .rz.se::after{content:"";position:absolute;right:3px;bottom:3px;width:9px;height:9px;
+        border-right:2px solid var(--accent);border-bottom:2px solid var(--accent);
+        opacity:0;transition:opacity .12s}
+  .card:hover .rz.se::after{opacity:.85}
+
+  .cardctl{display:flex;gap:1px;align-items:center;margin-left:8px;opacity:0;transition:opacity .12s}
+  .card:hover .cardctl,.cardctl:focus-within{opacity:1}
+  .cardctl button{border:1px solid var(--line);background:var(--panel2);color:var(--dim);
+        border-radius:4px;padding:1px 5px;font-size:11px;line-height:1.35;font-family:var(--mono);
+        cursor:pointer}
+  .cardctl button:hover{color:var(--accent);border-color:var(--accent)}
+
+  /* below this width free positioning stops making sense - stack it */
+  @media(max-width:900px){
+    .wrap{display:flex;flex-direction:column;gap:14px;height:auto !important}
+    .card{position:static !important;width:auto !important;height:auto !important}
+    .card .mapwrap{height:60vh}
+    .rz{display:none}
+  }
+  #c-map:fullscreen{position:fixed !important;inset:0 !important;
+        width:100% !important;height:100% !important;z-index:9999}
+
+  #layoutPanel{position:fixed;top:52px;right:14px;z-index:950;width:238px;
+        background:var(--panel);border:1px solid var(--hudline);border-radius:9px;padding:11px 12px;
+        font-size:12px;box-shadow:0 8px 26px rgba(0,0,0,.55)}
+  #layoutPanel .ttl{color:var(--accent);letter-spacing:1.5px;font-size:9.5px;text-transform:uppercase;
+        border-bottom:1px solid var(--hudline);padding-bottom:3px;margin:0 0 7px;font-family:var(--mono)}
+  #layoutPanel label{display:flex;align-items:center;gap:7px;padding:2px 0;color:var(--dim);cursor:pointer}
+  #layoutPanel select{width:100%;font-size:12px;padding:3px 6px}
+  #layoutPanel .grp{margin-bottom:8px}
+  @media(max-width:900px){ .card{grid-column:span var(--cols,12)} }
+  .card.dead{opacity:.55}
+  .card.dead > h2{color:var(--dim)}
+
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dead);flex:none}
+  .dot.live{background:var(--up);box-shadow:0 0 6px rgba(63,185,80,.6)}
+  .dot.stale{background:var(--warn)}
+  .dot.err{background:var(--down)}
+
+  /* ------------------------------------------------------------ HUD map */
+  #c-map{border-color:var(--hudline)}
+  .toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:8px 14px;
+           border-bottom:1px solid var(--line);background:var(--panel2);font-size:12px;color:var(--dim)}
+  .seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .seg button{border:none;border-radius:0;background:transparent;padding:4px 11px;font-size:12px;color:var(--dim)}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:var(--accent);color:#04202b;font-weight:600}
+  .toolbar .grp{display:flex;gap:6px;align-items:center}
+  .toolbar label{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.9px}
+  #radarStamp{font-family:var(--mono);color:var(--ink);min-width:98px;font-size:11px}
+
+  .mapwrap{position:relative}
+  #map{height:64vh;min-height:430px;width:100%;background:#04070b}
+  #c-map:fullscreen{border-radius:0}
+  /* beats the inline height the layout editor writes onto #map */
+  #c-map:fullscreen #map{height:calc(100vh - 96px) !important}
+  .leaflet-container{font:inherit;background:#04070b}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#0d1620;color:var(--ink);
+        border:1px solid var(--hudline);border-radius:6px}
+  .leaflet-popup-content{margin:10px 12px;font-size:12.5px}
+  .leaflet-control-zoom a{background:var(--hud);color:var(--accent);border-color:var(--hudline)}
+  /* sit the zoom buttons beside the SYSTEM read-out, not under it - the panel
+     grows a line when imagery is upscaled, so clearing it by height is fragile */
+  .leaflet-top.leaflet-left{margin-left:206px}
+
+  /* the readouts that sit on top of the map */
+  .hud{position:absolute;z-index:600;background:var(--hud);border:1px solid var(--hudline);
+       border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--dim);
+       backdrop-filter:blur(3px);pointer-events:none;line-height:1.65}
+  .hud b{color:var(--accent);font-weight:600}
+  .hud .val{color:var(--ink)}
+  .hud.tl{top:10px;left:10px;min-width:186px}
+  .hud.tr{top:10px;right:10px;pointer-events:auto;max-height:calc(100% - 22px);overflow:auto}
+  .hud.bl{bottom:22px;left:10px;min-width:190px}
+  .hud.br{bottom:22px;right:10px}
+  .hud .ttl{color:var(--accent);letter-spacing:1.6px;font-size:9.5px;text-transform:uppercase;
+            border-bottom:1px solid var(--hudline);padding-bottom:3px;margin-bottom:5px}
+  .hud label{display:flex;gap:7px;align-items:center;cursor:pointer;color:var(--dim);padding:1px 0}
+  .hud label:hover{color:var(--ink)}
+  .hud input[type=checkbox]{accent-color:var(--accent);margin:0}
+  .hud .cnt{margin-left:auto;color:var(--faint);font-size:10px}
+  /* the sliders live on the tile layers themselves via a CSS filter, so they
+     tune the picture without refetching a single tile */
+  .tuner{display:grid;gap:3px}
+  .tuner .row{display:grid;grid-template-columns:64px 1fr 34px;gap:6px;align-items:center}
+  .tuner .row span:first-child{color:var(--faint);font-size:10px}
+  .tuner .row input[type=range]{width:100%;height:12px}
+  .tuner .row .n{text-align:right;color:var(--ink);font-size:10px}
+  .leaflet-layer.tuned{
+    filter:brightness(var(--t-bright,1)) contrast(var(--t-contrast,1))
+           saturate(var(--t-sat,1)) grayscale(var(--t-gray,0)) hue-rotate(var(--t-hue,0deg));
+  }
+  .crisp .leaflet-tile{image-rendering:pixelated}
+  .heatbar{height:9px;border-radius:3px;margin:5px 0 2px}
+  .heatends{display:flex;justify-content:space-between;font-size:10px;color:var(--faint)}
+  .swatch{width:9px;height:9px;display:inline-block;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+  /* faint grid + crosshair so it reads as an instrument, not a webpage */
+  .hudfx{position:absolute;inset:0;z-index:500;pointer-events:none;
+         background-image:
+           linear-gradient(rgba(63,208,255,.045) 1px,transparent 1px),
+           linear-gradient(90deg,rgba(63,208,255,.045) 1px,transparent 1px);
+         background-size:64px 64px}
+  .hudfx::after{content:"";position:absolute;inset:0;
+         background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%)}
+  .cross{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;
+         z-index:501;pointer-events:none;opacity:.5}
+  .cross::before,.cross::after{content:"";position:absolute;background:var(--accent)}
+  .cross::before{left:50%;top:0;bottom:0;width:1px;margin-left:-.5px}
+  .cross::after{top:50%;left:0;right:0;height:1px;margin-top:-.5px}
+
+  .watchpin{background:rgba(8,14,20,.85);color:var(--accent);font-weight:600;font-size:10px;
+            border-radius:4px;padding:2px 5px;white-space:nowrap;border:1px solid var(--hudline);
+            font-family:var(--mono)}
+  .warpin{width:14px;height:14px;border-radius:50%;border:2px solid #ff4d4d;
+          box-shadow:0 0 0 0 rgba(255,77,77,.6);animation:pulse 2.2s infinite}
+  .warpin.tension{border-color:#ffd24a;animation-duration:3.4s}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(255,77,77,.55)}
+    70%{box-shadow:0 0 0 13px rgba(255,77,77,0)}
+    100%{box-shadow:0 0 0 0 rgba(255,77,77,0)}
+  }
+
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+  .tiles{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+  .tile{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 10px}
+  .tile .k{font-size:11px;color:var(--dim);line-height:1.25;min-height:28px}
+  .tile .v{font-size:19px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums}
+  .tile .c{font-size:11px;margin-top:2px;font-variant-numeric:tabular-nums}
+  .tile.dead{opacity:.42}
+  .tile.dead .v{color:var(--faint);font-size:14px;font-weight:400}
+  .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--dim)}
+  .asof{font-size:10px;color:var(--faint);margin-top:3px}
+
+  .wx{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .wxc{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px;
+       cursor:pointer;transition:border-color .15s}
+  .wxc:hover{border-color:var(--accent)}
+  .wxc.sel{border-color:var(--accent);box-shadow:0 0 0 1px rgba(63,208,255,.3) inset}
+  .wxc .nm{font-weight:600;font-size:13px;display:flex;align-items:baseline;gap:6px}
+  .wxc .nm span{font-weight:400;font-size:11px;color:var(--faint)}
+  .wxc .big{font-size:27px;font-weight:600;margin:4px 0 1px;font-variant-numeric:tabular-nums}
+  .wxc .cond{font-size:12px;color:var(--dim)}
+  .wxc .sub{font-size:11px;color:var(--faint);margin-top:3px}
+  .days{display:flex;gap:4px;margin-top:8px}
+  .days div{flex:1;text-align:center;background:var(--panel);border:1px solid var(--line);
+            border-radius:6px;padding:4px 2px;font-size:10px;color:var(--dim)}
+  .days b{display:block;color:var(--ink);font-size:11px;font-variant-numeric:tabular-nums}
+
+  /* conflict + energy */
+  .warlist{display:grid;gap:7px;max-height:430px;overflow:auto}
+  .war{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+       border-left:3px solid var(--dead)}
+  .war.war-war{border-left-color:#ff4d4d}
+  .war.war-insurgency{border-left-color:#f0883e}
+  .war.war-tension{border-left-color:#ffd24a}
+  .war .top{display:flex;align-items:baseline;gap:8px}
+  .war .top b{font-size:13px}
+  .war .top .kind{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint)}
+  .war .top .cov{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .war .parties{font-size:11px;color:var(--faint);margin:1px 0 4px}
+  .war .hl{font-size:11.5px;line-height:1.4;padding:2px 0;border-top:1px solid var(--line)}
+  .war .hl span{color:var(--faint);font-size:10px}
+  .covbar{height:4px;background:#16202c;border-radius:3px;overflow:hidden;margin:4px 0 5px}
+  .covbar span{display:block;height:100%;background:linear-gradient(90deg,#3fd0ff,#ff4d4d)}
+
+  .mixrow{display:flex;align-items:center;gap:8px;font-size:12px;padding:2px 0}
+  .mixrow .nm{width:104px;color:var(--dim)}
+  .mixrow .track{flex:1;height:9px;background:#131c26;border-radius:3px;overflow:hidden}
+  .mixrow .track span{display:block;height:100%}
+  .mixrow .pc{width:52px;text-align:right;font-variant-numeric:tabular-nums;font-size:11.5px}
+
+  .kal{display:grid;gap:7px}
+  .kalrow{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .kalrow .lab{font-size:11px;color:var(--dim);display:flex;justify-content:space-between}
+  .kalrow .q{font-size:12px;margin:2px 0 6px;line-height:1.35}
+  .kalrow .pct{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .bar{height:7px;background:#16202c;border-radius:4px;overflow:hidden}
+  .bar span{display:block;height:100%;background:linear-gradient(90deg,#3fd0ff,#a371f7)}
+  .kalrow.dead{opacity:.45}
+
+  .tv{position:relative;padding-top:min(56.25%,472px);max-width:840px;margin:0 auto;
+      border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#000}
+  .tv iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .tvfoot{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:11.5px;color:var(--faint);
+          max-width:840px;margin-left:auto;margin-right:auto}
+  .livebadge{color:#f85149;font-weight:700;font-size:10px;letter-spacing:.6px}
+  .tabs button.offair{opacity:.5}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.4px;
+     position:sticky;top:0;background:var(--panel);cursor:pointer;user-select:none}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .scroll{max-height:360px;overflow:auto}
+  tr.bad td{color:var(--faint)}
+
+  .tabs{display:flex;gap:6px;padding:10px 14px 0;flex-wrap:wrap}
+  .tabs button{font-size:12px;padding:5px 11px;border-radius:999px;background:var(--panel2)}
+  .tabs button.on{background:var(--accent);color:#04202b;border-color:var(--accent);font-weight:600}
+  .hide{display:none}
+
+  ul.news{list-style:none;margin:0;padding:0;max-height:420px;overflow:auto}
+  ul.news li{padding:7px 0;border-bottom:1px solid var(--line)}
+  ul.news .src{font-size:10.5px;color:var(--faint);margin-top:2px}
+  .note{color:var(--faint);font-size:11.5px;margin-top:8px}
+  .err{color:var(--down);font-size:12px}
+  svg.spark{display:block;margin-top:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>WORLD INTEL</h1>
+  <div class="ctl">
+    <label for="place" style="color:var(--faint)">Climate for</label>
+    <select id="place"></select>
+  </div>
+  <div class="spacer"></div>
+  <div class="clock" id="clock">starting…</div>
+  <button id="layoutBtn">▦ Layout</button>
+  <button id="refreshAll">Refresh now</button>
+</header>
+
+<div id="layoutPanel" class="hide">
+  <div class="ttl">Layout</div>
+  <div class="grp"><span style="color:var(--faint);font-size:10px">DENSITY</span>
+    <select id="densSel">
+      <option value="0.72">Tiny</option>
+      <option value="0.85">Compact</option>
+      <option value="1" selected>Normal</option>
+      <option value="1.15">Large</option>
+    </select>
+  </div>
+  <div class="grp">
+    <label><input type="checkbox" id="snapCb" checked> snap to grid</label>
+  </div>
+  <div class="ttl">Panels</div>
+  <div id="panelList"></div>
+  <button id="tidyBtn" style="width:100%;margin-top:8px;font-size:11px;padding:4px 6px">Tidy up</button>
+  <button id="layoutReset" style="width:100%;margin-top:5px;font-size:11px;padding:4px 6px">Reset layout</button>
+  <div style="color:var(--faint);font-size:10.5px;margin-top:7px;line-height:1.4">
+    Drag a panel by its title bar. Drag any corner or edge to resize.
+    Hold <b>Alt</b> to place it freely, ignoring the grid.
+    Title-bar buttons: ⌃ fold, ⤢ full width, ✕ hide.
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="card" id="c-map">
+    <h2><span class="dot" id="d-map"></span>Tactical map <span class="meta" id="m-map"></span></h2>
+
+    <div class="toolbar">
+      <div class="grp"><label>Base</label>
+        <select id="styleSel" style="font-size:12px;padding:4px 8px"></select>
+        <button id="satBtn">Satellite</button>
+        <button id="labelBtn">Labels</button>
+        <button id="tilesBtn">⚙ Tiles</button>
+      </div>
+      <div class="grp"><label>Field</label>
+        <div class="seg" id="segHeat">
+          <button data-v="off" class="on">Off</button>
+          <button data-v="temp">Temperature</button>
+          <button data-v="feels">Feels like</button>
+          <button data-v="danger">⚠ Danger</button>
+          <button data-v="co2">CO₂ ppm</button>
+          <button data-v="jobs">Jobless</button>
+          <button data-v="events">Event density</button>
+        </div>
+        <select id="paletteSel" title="colour ramp" style="font-size:11px;padding:3px 6px">
+          <option value="thermal">Thermal</option>
+          <option value="icefire">Ice ↔ Fire</option>
+          <option value="viridis">Viridis</option>
+          <option value="spectral">Spectral</option>
+        </select>
+      </div>
+      <div class="grp"><label>Radar</label>
+        <button id="playBtn">▶</button>
+        <input type="range" id="frameSlider" min="0" max="0" value="0" />
+        <span id="radarStamp">—</span>
+      </div>
+      <div class="grp"><label>Opacity</label>
+        <input type="range" id="opacity" min="0" max="100" value="62" />
+      </div>
+      <button id="globeBtn">🌍 Whole planet</button>
+      <button id="fsBtn">⤢ Expand</button>
+    </div>
+
+    <div class="mapwrap">
+      <div id="map"></div>
+      <div class="hudfx"></div>
+      <div class="cross"></div>
+
+      <div class="hud tl" id="hudStatus"></div>
+
+      <div class="hud tr" id="hudLayers">
+        <div class="ttl">Layers</div>
+        <div id="layerList"></div>
+        <div class="ttl" style="margin-top:8px">Energy filter</div>
+        <select id="fuelFilter" style="width:100%;font-size:11px;padding:3px 6px;font-family:var(--mono)">
+          <option value="all">All fuels</option>
+          <option value="fossil">Fossil only</option>
+          <option value="clean">Low-carbon only</option>
+          <option value="Nuclear">Nuclear</option>
+          <option value="Coal">Coal</option>
+          <option value="Gas">Gas</option>
+          <option value="Hydro">Hydro</option>
+          <option value="Solar">Solar</option>
+          <option value="Wind">Wind</option>
+        </select>
+
+        <div id="tilePanel" class="hide">
+          <div class="ttl" style="margin-top:9px">Tile adjust</div>
+          <div class="tuner" id="tuner"></div>
+          <label style="margin-top:5px"><input type="checkbox" id="retinaCb"> sharp @2x tiles</label>
+          <label><input type="checkbox" id="crispCb"> crisp upscaling</label>
+          <button id="tileReset" style="width:100%;margin-top:6px;font-size:11px;padding:3px 6px">Reset tiles</button>
+        </div>
+      </div>
+
+      <div class="hud bl" id="hudLegend"></div>
+      <div class="hud br" id="hudCursor">
+        <div class="ttl">Cursor</div>
+        <div>LAT <span class="val" id="curLat">--.---</span>
+             LON <span class="val" id="curLon">---.---</span></div>
+        <div id="curField">click anywhere for a full read-out</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="c-watch">
+    <h2><span class="dot" id="d-watch"></span>Weather — watched places <span class="meta" id="m-watch"></span></h2>
+    <div class="body" id="b-watch">loading…</div>
+  </div>
+
+  <div class="card" id="c-planet">
+    <h2><span class="dot" id="d-planet"></span>Planet check — how are we doing
+        <span class="meta" id="m-planet"></span></h2>
+    <div class="body" id="b-planet">loading…</div>
+  </div>
+
+    <div class="card" id="c-conflicts">
+      <h2><span class="dot" id="d-conflicts"></span>Conflict watch <span class="meta" id="m-conflicts"></span></h2>
+      <div class="body" id="b-conflicts">loading…</div>
+    </div>
+
+    <div class="card" id="c-energy">
+      <h2><span class="dot" id="d-energy"></span>Energy sector <span class="meta" id="m-energy"></span></h2>
+      <div class="body" id="b-energy">loading…</div>
+    </div>
+
+    <div class="card" id="c-climate">
+      <h2><span class="dot" id="d-climate"></span>Local climate <span class="meta" id="m-climate"></span></h2>
+      <div class="body" id="b-climate">loading…</div>
+    </div>
+
+    <div class="card" id="c-markets">
+      <h2><span class="dot" id="d-markets"></span>Markets <span class="meta" id="m-markets"></span></h2>
+      <div class="body" id="b-markets">loading…</div>
+      <h2 style="border-top:1px solid var(--line)">
+        <span class="dot" id="d-kalshi"></span>What the betting markets expect
+        <span class="meta" id="m-kalshi"></span></h2>
+      <div class="body" id="b-kalshi">loading…</div>
+    </div>
+
+    <div class="card" id="c-news">
+      <h2><span class="dot" id="d-news"></span>World events (last 24h) <span class="meta" id="m-news"></span></h2>
+      <div class="body" id="b-news">loading…</div>
+    </div>
+
+    <div class="card" id="c-marketnews">
+      <h2><span class="dot" id="d-marketnews"></span>Market news <span class="meta" id="m-marketnews"></span></h2>
+      <div class="tabs" id="mnTabs">
+        <button data-r="us" class="on">US</button>
+        <button data-r="europe">Europe</button>
+        <button data-r="asia">Asia</button>
+      </div>
+      <div class="body" id="b-marketnews">loading…</div>
+    </div>
+
+  <div class="card" id="c-livetv">
+    <h2><span class="dot" id="d-livetv"></span>Live news TV <span class="meta" id="m-livetv"></span></h2>
+    <div class="tabs" id="tvTabs"></div>
+    <div class="body" id="b-livetv">loading…</div>
+  </div>
+
+  <div class="card" id="c-jobless">
+    <h2><span class="dot" id="d-jobless"></span>Jobless &amp; labor market — United States
+        <span class="meta" id="m-jobless"></span></h2>
+    <div class="tabs">
+      <button data-tab="nat" class="on">National</button>
+      <button data-tab="st">All 50 states + DC</button>
+      <button data-tab="sec">By industry</button>
+    </div>
+    <div class="body">
+      <div id="j-nat"></div>
+      <div id="j-st" class="hide"></div>
+      <div id="j-sec" class="hide"></div>
+      <div class="note" id="j-cov"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script>
+const REFRESH_MS = 8 * 60 * 60 * 1000;   // 8 hours, as requested
+let nextRefresh = Date.now() + REFRESH_MS;
+
+// ---------------------------------------------------------------- utilities
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d = 0) =>
+  n == null || Number.isNaN(n) ? '—' : Number(n).toLocaleString('en-US',
+    { minimumFractionDigits: d, maximumFractionDigits: d });
+const ago = (iso) => {
+  if (!iso) return 'never';
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 90) return Math.round(s) + 's ago';
+  if (s < 5400) return Math.round(s / 60) + 'm ago';
+  if (s < 172800) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+};
+const cls = (n) => (n == null ? 'flat' : n > 0 ? 'up' : n < 0 ? 'down' : 'flat');
+const sign = (n, d = 2) => (n == null ? '—' : (n > 0 ? '+' : '') + fmt(n, d));
+const c2f = (c) => (c == null ? null : c * 9 / 5);
+
+const FEEDS = {};   // name -> {ok, fetchedAt, error} for the HUD status block
+
+async function load(path, params = {}, fresh = false) {
+  const q = new URLSearchParams(params);
+  if (fresh) q.set('fresh', '1');
+  try {
+    const r = await fetch(path + (q.toString() ? '?' + q : ''));
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: String(e.message || e), data: null };
+  }
+}
+
+function mark(name, res) {
+  FEEDS[name] = { ok: Boolean(res.ok && res.data), at: res.fetchedAt, error: res.error };
+  const dot = $('d-' + name), meta = $('m-' + name), card = $('c-' + name);
+  drawStatus();
+  if (!dot) return res;
+  const bad = !res.ok || !res.data;
+  dot.className = 'dot ' + (bad ? 'err' : res.stale ? 'stale' : 'live');
+  if (meta) meta.textContent = bad
+    ? 'NO DATA — ' + (res.error || 'source did not answer')
+    : 'as of ' + ago(res.fetchedAt);
+  if (card) card.classList.toggle('dead', bad);
+  return res;
+}
+
+function spark(hist, w = 118, h = 26) {
+  if (!hist || hist.length < 2) return '';
+  const vs = hist.map((p) => p.v);
+  const min = Math.min(...vs), max = Math.max(...vs), span = max - min || 1;
+  const pts = hist.map((p, i) =>
+    `${(i / (hist.length - 1)) * w},${h - ((p.v - min) / span) * (h - 3) - 1.5}`).join(' ');
+  const rising = vs[vs.length - 1] >= vs[0];
+  return `<svg class="spark" width="${w}" height="${h}"><polyline points="${pts}" fill="none"
+    stroke="${rising ? '#f85149' : '#3fb950'}" stroke-width="1.4" opacity=".85"/></svg>`;
+}
+
+function seriesTile(s, { invert = false, decimals = 1, spark: sp = false } = {}) {
+  if (!s || !s.ok) {
+    return `<div class="tile dead"><div class="k">${(s && s.label) || 'series'}</div>
+            <div class="v">no data</div><div class="asof">${(s && s.error) || ''}</div></div>`;
+  }
+  const dir = s.chg == null ? 0 : Math.sign(s.chg) * (invert ? -1 : 1);
+  const colour = dir > 0 ? 'up' : dir < 0 ? 'down' : 'flat';
+  return `<div class="tile"><div class="k">${s.label}</div>
+    <div class="v">${fmt(s.latest.v, decimals)}<span style="font-size:11px;color:var(--faint)"> ${s.units || ''}</span></div>
+    <div class="c ${colour}">${sign(s.chg, decimals)} vs prior${
+      s.yoyPct != null ? ` · ${sign(s.yoyPct, 1)}% yr` : ''}</div>
+    <div class="asof">${s.latest.d}</div>${sp ? spark(s.history.slice(-40)) : ''}</div>`;
+}
+
+// -------------------------------------------------------------------- map
+// Shown in the SYSTEM panel so you can tell at a glance whether the browser is
+// running this build or a cached older one.
+const BUILD = 7;
+const MAX_ZOOM = 24;          // as far in as Leaflet will go
+const CAM_MIN_ZOOM = 9;       // below this there are too many cameras to be useful
+const map = L.map('map', {
+  worldCopyJump: true, preferCanvas: true, minZoom: 2, maxZoom: MAX_ZOOM,
+  zoomControl: true, zoomSnap: 0.5,
+}).setView([28, -20], 2.5);
+
+// Esri's imagery depth is per-tile, not global: Murrieta runs out around z19-20,
+// LA and New York at z21, Madrid goes deeper, open ocean stops around z16. Past
+// whatever that local limit is, the server answers HTTP 200 with a canned
+// "Zoom level not supported" JPEG - so Leaflet cannot tell it from real imagery
+// and paints the text on the map. No single maxNativeZoom can cover that.
+// ?blankTile=false makes the server return a real 404 instead (verified: LA z21
+// and NYC z20 both flip from a 2,521-byte error JPEG to 404), which Leaflet
+// handles properly - it swaps in errorTileUrl, a transparent pixel, and the base
+// map shows through. So satellite rides ON TOP of a map style rather than
+// replacing it, and any hole shows streets underneath instead of a black square.
+const CLEAR_PIXEL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+// Esri imagery is fetched through our own server, which throws away the
+// "Zoom level not supported" tile before it can ever reach the map. See the
+// imagery proxy in server.mjs.
+const ESRI_TILE = (service) => `/api/tile/${service}/{z}/{y}/{x}`;
+
+// Every style is keyless. retina says whether the service serves @2x tiles;
+// native is the deepest level it really has, so the picture degrades to an
+// upscale rather than to nothing.
+const STYLES = {
+  dark:     { name: 'Dark',           url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', native: 19, retina: true,  attr: '&copy; OSM, &copy; CARTO' },
+  light:    { name: 'Light',          url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', native: 19, retina: true, attr: '&copy; OSM, &copy; CARTO' },
+  voyager:  { name: 'Voyager',        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', native: 19, retina: true, attr: '&copy; OSM, &copy; CARTO' },
+  streets:  { name: 'Streets (OSM)',  url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', native: 19, retina: false, attr: '&copy; OSM contributors' },
+  topo:     { name: 'Topographic',    url: ESRI_TILE('topo'), native: 19, retina: false, attr: '&copy; Esri' },
+  terrain:  { name: 'Terrain',        url: ESRI_TILE('terrain'), native: 13, retina: false, attr: '&copy; Esri' },
+  natgeo:   { name: 'National Geographic', url: ESRI_TILE('natgeo'), native: 16, retina: false, attr: '&copy; Esri, National Geographic' },
+  ocean:    { name: 'Ocean floor',    url: ESRI_TILE('ocean'), native: 13, retina: false, attr: '&copy; Esri' },
+  opentopo: { name: 'OpenTopoMap',    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', native: 17, retina: false, attr: '&copy; OpenTopoMap (CC-BY-SA)' },
+};
+
+// Tunable state, remembered between visits.
+const TILE_DEFAULTS = { style: 'dark', sat: false, satOpacity: 100, baseOpacity: 100,
+  bright: 100, contrast: 100, sat_: 100, gray: 0, hue: 0, labels: false, retina: true, crisp: false };
+let TILES = { ...TILE_DEFAULTS, ...(JSON.parse(localStorage.getItem('tileSettings') || '{}')) };
+const saveTiles = () => localStorage.setItem('tileSettings', JSON.stringify(TILES));
+
+function makeStyleLayer(key) {
+  const s = STYLES[key];
+  return L.tileLayer(s.url, {
+    attribution: s.attr, maxNativeZoom: s.native, maxZoom: MAX_ZOOM,
+    detectRetina: TILES.retina && s.retina, errorTileUrl: CLEAR_PIXEL,
+    className: 'tuned', opacity: TILES.baseOpacity / 100,
+  });
+}
+// 19, not 21. Measured through the proxy: Esri has imagery to z19 over Murrieta
+// and z20 over LA and New York, and nothing deeper anywhere tested. Asking for
+// 21 meant the proxy correctly blanked it and the imagery vanished as you zoomed
+// in - no error card, but no picture either. At 19 the deepest real tile is
+// upscaled instead, so the view stays real all the way to z24: softer the
+// further you push, never blank, never an error card.
+function makeSatLayer() {
+  return L.tileLayer(ESRI_TILE('imagery'), {
+    attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
+    maxNativeZoom: 19, maxZoom: MAX_ZOOM, errorTileUrl: CLEAR_PIXEL,
+    className: 'tuned', opacity: TILES.satOpacity / 100, zIndex: 3,
+  });
+}
+// Place names and roads, drawn over imagery so satellite view is still readable.
+function makeLabelLayers() {
+  return [
+    L.tileLayer(ESRI_TILE('labels'),
+      { maxNativeZoom: 19, maxZoom: MAX_ZOOM, errorTileUrl: CLEAR_PIXEL, zIndex: 5 }),
+    L.tileLayer(ESRI_TILE('transport'),
+      { maxNativeZoom: 19, maxZoom: MAX_ZOOM, errorTileUrl: CLEAR_PIXEL, zIndex: 4 }),
+  ];
+}
+
+let baseLayer = null, satLayer = null, labelLayers = [];
+// Rebuilds the tile stack from TILES. Called whenever a setting that changes the
+// tile requests themselves (style, retina, satellite, labels) is touched; the
+// look-only sliders take the cheaper CSS path in applyTileFilters().
+function applyBase() {
+  if (baseLayer) map.removeLayer(baseLayer);
+  baseLayer = makeStyleLayer(TILES.style).addTo(map);
+  baseLayer.bringToBack();
+
+  if (TILES.sat) { if (!satLayer) satLayer = makeSatLayer().addTo(map); }
+  else if (satLayer) { map.removeLayer(satLayer); satLayer = null; }
+
+  if (TILES.labels) {
+    if (!labelLayers.length) labelLayers = makeLabelLayers().map((l) => l.addTo(map));
+  } else if (labelLayers.length) {
+    labelLayers.forEach((l) => map.removeLayer(l));
+    labelLayers = [];
+  }
+
+  $('satBtn').classList.toggle('on', TILES.sat);
+  $('labelBtn').classList.toggle('on', TILES.labels);
+  $('satBtn').style.borderColor = TILES.sat ? 'var(--accent)' : '';
+  $('labelBtn').style.borderColor = TILES.labels ? 'var(--accent)' : '';
+  saveTiles();
+  drawStatus();
+}
+
+function applyTileFilters() {
+  const r = document.documentElement.style;
+  r.setProperty('--t-bright', TILES.bright / 100);
+  r.setProperty('--t-contrast', TILES.contrast / 100);
+  r.setProperty('--t-sat', TILES.sat_ / 100);
+  r.setProperty('--t-gray', TILES.gray / 100);
+  r.setProperty('--t-hue', TILES.hue + 'deg');
+  if (baseLayer) baseLayer.setOpacity(TILES.baseOpacity / 100);
+  if (satLayer) satLayer.setOpacity(TILES.satOpacity / 100);
+  document.getElementById('map').classList.toggle('crisp', TILES.crisp);
+  saveTiles();
+}
+
+const TUNERS = [
+  ['satOpacity', 'Satellite', 0, 100, '%'],
+  ['baseOpacity', 'Base map', 0, 100, '%'],
+  ['bright', 'Brightness', 20, 200, '%'],
+  ['contrast', 'Contrast', 20, 250, '%'],
+  ['sat_', 'Colour', 0, 250, '%'],
+  ['gray', 'Grayscale', 0, 100, '%'],
+  ['hue', 'Hue shift', 0, 359, '°'],
+];
+function buildTuner() {
+  $('tuner').innerHTML = TUNERS.map(([k, label, min, max, unit]) => `
+    <div class="row"><span>${label}</span>
+      <input type="range" id="t-${k}" min="${min}" max="${max}" value="${TILES[k]}">
+      <span class="n" id="n-${k}">${TILES[k]}${unit}</span></div>`).join('');
+  TUNERS.forEach(([k, , , , unit]) => {
+    $('t-' + k).oninput = (e) => {
+      TILES[k] = Number(e.target.value);
+      $('n-' + k).textContent = TILES[k] + unit;
+      applyTileFilters();
+    };
+  });
+  $('retinaCb').checked = TILES.retina;
+  $('crispCb').checked = TILES.crisp;
+}
+
+$('styleSel').innerHTML = Object.entries(STYLES)
+  .map(([k, s]) => `<option value="${k}" ${k === TILES.style ? 'selected' : ''}>${s.name}</option>`).join('');
+$('styleSel').onchange = (e) => { TILES.style = e.target.value; applyBase(); applyTileFilters(); };
+$('satBtn').onclick = () => { TILES.sat = !TILES.sat; applyBase(); applyTileFilters(); };
+$('labelBtn').onclick = () => { TILES.labels = !TILES.labels; applyBase(); };
+$('tilesBtn').onclick = () => $('tilePanel').classList.toggle('hide');
+$('retinaCb').onchange = (e) => { TILES.retina = e.target.checked; applyBase(); applyTileFilters(); };
+$('crispCb').onchange = (e) => { TILES.crisp = e.target.checked; applyTileFilters(); };
+$('tileReset').onclick = () => {
+  TILES = { ...TILE_DEFAULTS, style: TILES.style };
+  buildTuner(); applyBase(); applyTileFilters();
+};
+
+const layers = {
+  heat:     L.layerGroup().addTo(map),
+  radar:    L.layerGroup().addTo(map),
+  alerts:   L.layerGroup().addTo(map),
+  quakes:   L.layerGroup().addTo(map),
+  events:   L.layerGroup().addTo(map),
+  conflict: L.layerGroup().addTo(map),
+  energy:   L.layerGroup(),
+  cameras:  L.layerGroup(),
+  jobs:     L.layerGroup(),
+  watch:    L.layerGroup().addTo(map),
+};
+const LAYER_META = [
+  ['radar', 'Weather radar'], ['alerts', 'Severe weather alerts'],
+  ['quakes', 'Earthquakes 2.5+'], ['events', 'Disasters / fires / storms'],
+  ['conflict', 'Conflicts & wars'], ['energy', 'Power plants'],
+  ['cameras', 'Road cameras (zoom in)'],
+  ['jobs', 'US state jobless'], ['watch', 'Watched places'],
+];
+const layerCounts = {};
+
+function drawLayerPanel() {
+  $('layerList').innerHTML = LAYER_META.map(([k, label]) => `
+    <label><input type="checkbox" data-l="${k}" ${map.hasLayer(layers[k]) ? 'checked' : ''}>
+      ${label}<span class="cnt">${layerCounts[k] != null ? layerCounts[k] : '—'}</span></label>`).join('');
+  $('layerList').querySelectorAll('input').forEach((cb) => {
+    cb.onchange = () => {
+      const g = layers[cb.dataset.l];
+      if (cb.checked) g.addTo(map); else map.removeLayer(g);
+      if (cb.dataset.l === 'energy' && cb.checked && !ENERGY) drawEnergy(false);
+      if (cb.dataset.l === 'cameras') { if (cb.checked && !CAMS) loadCameras(false); else drawCameraLayer(); }
+    };
+  });
+}
+drawLayerPanel();
+
+function drawStatus() {
+  const names = Object.keys(FEEDS);
+  const live = names.filter((n) => FEEDS[n].ok).length;
+  const down = names.filter((n) => !FEEDS[n].ok);
+  const left = Math.max(0, nextRefresh - Date.now());
+  // Past the top layer's deepest real level the picture is an upscale of the last
+  // true tile - say so rather than letting a blurry image imply detail.
+  const top = TILES.sat ? satLayer : baseLayer;
+  const native = top ? top.options.maxNativeZoom : 19;
+  const upscaled = map.getZoom() > native;
+  $('hudStatus').innerHTML = `
+    <div class="ttl">System</div>
+    <div>UTC <span class="val">${new Date().toISOString().slice(11, 19)}</span>
+         <span style="color:var(--faint)">b${BUILD}</span></div>
+    <div>ZOOM <span class="val">${map.getZoom().toFixed(1)}</span>
+         VIEW <span class="val">${map.getCenter().lat.toFixed(1)}, ${map.getCenter().lng.toFixed(1)}</span></div>
+    ${upscaled ? `<div style="color:var(--faint)">imagery native z${native}</div>` : ''}
+    <div>FEEDS <span class="val">${live}/${names.length}</span> live</div>
+    <div>NEXT <span class="val">${Math.floor(left / 3600e3)}h ${String(Math.floor((left % 3600e3) / 60e3)).padStart(2, '0')}m</span></div>
+    ${down.length ? `<div style="color:#f85149">DOWN ${down.join(' ')}</div>` : ''}`;
+}
+map.on('zoomend moveend', () => { drawStatus(); rescaleHeat(); });
+setInterval(drawStatus, 1000);
+
+// cursor read-out: lat/lon plus whatever field is currently painted
+let heatData = null;   // {points:[{lat,lon,v}], unit, lo, hi, stepDeg, title}
+map.on('mousemove', (e) => {
+  $('curLat').textContent = e.latlng.lat.toFixed(3);
+  $('curLon').textContent = ((e.latlng.lng + 540) % 360 - 180).toFixed(3);
+  if (!heatData) { $('curField').textContent = 'field: off'; return; }
+  const near = nearestPoint(e.latlng.lat, e.latlng.lng);
+  $('curField').innerHTML = near
+    ? `${heatData.title.split(' (')[0]} <span class="val">${fmt(near.v, heatData.unit === 'ppm' ? 0 : 1)}${heatData.unit}</span>`
+    : 'field: no sample here';
+});
+function nearestPoint(lat, lon) {
+  const l = ((lon + 540) % 360) - 180;
+  let best = null, bestD = Infinity;
+  for (const p of heatData.points) {
+    const d = (p.lat - lat) ** 2 + (p.lon - l) ** 2;
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return bestD <= (heatData.stepDeg * 1.2) ** 2 ? best : null;
+}
+
+map.on('click', async (e) => {
+  const { lat, lng } = e.latlng;
+  const pop = L.popup({ maxWidth: 280 }).setLatLng(e.latlng)
+    .setContent('<i>reading this spot…</i>').openOn(map);
+  const r = await load('/api/point', { lat: lat.toFixed(4), lon: lng.toFixed(4) });
+  if (!r.ok || !r.data) {
+    pop.setContent(`<b>${lat.toFixed(3)}, ${lng.toFixed(3)}</b><br>
+      <span style="color:#f85149">No reading for this spot.</span>`);
+    return;
+  }
+  const d = r.data, a = d.air;
+  pop.setContent(`<b>${lat.toFixed(3)}, ${lng.toFixed(3)}</b><br>
+    <span style="font-size:20px;font-weight:600">${fmt(d.tempF, 0)}°F</span> ${d.text}<br>
+    feels ${fmt(d.feelsF, 0)}°F · ${fmt(d.humidity, 0)}% humidity · wind ${fmt(d.windMph, 0)} mph<br>
+    today ${fmt(d.todayMin, 0)}° / ${fmt(d.todayMax, 0)}°
+    ${a && a.co2Ppm != null ? `<div style="margin-top:5px;border-top:1px solid #1b2735;padding-top:4px">
+      CO₂ <b>${fmt(a.co2Ppm, 0)} ppm</b> · PM2.5 ${fmt(a.pm25, 1)} µg/m³
+      ${a.no2 != null ? '· NO₂ ' + fmt(a.no2, 1) : ''}</div>` : ''}
+    <div style="color:#5b6b80;font-size:10px;margin-top:3px">${d.timezone || ''} · ${ago(r.fetchedAt)}</div>`);
+});
+
+$('globeBtn').onclick = () => map.setView([20, 0], 2, { animate: true });
+$('fsBtn').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else $('c-map').requestFullscreen();
+};
+document.addEventListener('fullscreenchange', () => {
+  $('fsBtn').textContent = document.fullscreenElement ? '⤡ Exit' : '⤢ Expand';
+  setTimeout(() => map.invalidateSize(), 130);
+});
+
+// ------------------------------------------------------------ radar frames
+let radarFrames = [], radarHost = '', frameLayers = {}, frameIdx = 0, playTimer = null;
+let radarOpacity = 0.62;
+
+function showFrame(i) {
+  if (!radarFrames.length) return;
+  frameIdx = (i + radarFrames.length) % radarFrames.length;
+  const f = radarFrames[frameIdx];
+  if (!frameLayers[f.path]) {
+    frameLayers[f.path] = L.tileLayer(`${radarHost}${f.path}/256/{z}/{x}/{y}/4/1_1.png`,
+      { opacity: 0, maxNativeZoom: 12, maxZoom: MAX_ZOOM }).addTo(layers.radar);
+  }
+  for (const [p, lyr] of Object.entries(frameLayers)) lyr.setOpacity(p === f.path ? radarOpacity : 0);
+  const t = new Date(f.time * 1000);
+  const future = f.time * 1000 > Date.now();
+  $('radarStamp').textContent =
+    t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + (future ? ' fcst' : '');
+  $('frameSlider').value = String(frameIdx);
+}
+$('frameSlider').oninput = (e) => { stopPlay(); showFrame(Number(e.target.value)); };
+$('opacity').oninput = (e) => { radarOpacity = Number(e.target.value) / 100; showFrame(frameIdx); };
+function stopPlay() { clearInterval(playTimer); playTimer = null; $('playBtn').textContent = '▶'; }
+$('playBtn').onclick = () => {
+  if (playTimer) return stopPlay();
+  if (!radarFrames.length) return;
+  $('playBtn').textContent = '⏸';
+  playTimer = setInterval(() => showFrame(frameIdx + 1), 700);
+};
+
+// ---------------------------------------------------------------- the field
+let heatMode = 'off', heatLayer = null, heatLayer2 = null, heatScope = '';
+
+// Colour ramps for the temperature-style fields. Thermal is the familiar
+// weather-map look; Ice/Fire is diverging so the cold end reads as clearly as
+// the hot end; Viridis stays legible if you are colour-blind.
+const PALETTES = {
+  thermal: { grad: { 0: '#2b3cff', 0.2: '#31c8ff', 0.4: '#3fb950', 0.6: '#ffd24a', 0.8: '#f0883e', 1: '#ff2d2d' },
+             css: 'linear-gradient(90deg,#2b3cff,#31c8ff,#3fb950,#ffd24a,#f0883e,#ff2d2d)' },
+  icefire: { grad: { 0: '#0a2f9c', 0.25: '#4aa8ff', 0.5: '#f2f2f2', 0.75: '#ff8a3d', 1: '#a4160f' },
+             css: 'linear-gradient(90deg,#0a2f9c,#4aa8ff,#f2f2f2,#ff8a3d,#a4160f)' },
+  viridis: { grad: { 0: '#440154', 0.25: '#3b528b', 0.5: '#21918c', 0.75: '#5ec962', 1: '#fde725' },
+             css: 'linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725)' },
+  spectral: { grad: { 0: '#3288bd', 0.25: '#99d594', 0.5: '#e6f598', 0.75: '#fc8d59', 1: '#d53e4f' },
+              css: 'linear-gradient(90deg,#3288bd,#99d594,#e6f598,#fc8d59,#d53e4f)' },
+};
+let palette = localStorage.getItem('palette') || 'thermal';
+
+const GRAD_CO2  = { 0: '#0b6e4f', 0.3: '#3fd0ff', 0.55: '#ffd24a', 0.78: '#f0883e', 1: '#ff2d2d' };
+const GRAD_JOBS = { 0: '#3fb950', 0.5: '#ffd24a', 0.78: '#f0883e', 1: '#ff2d2d' };
+const GRAD_EVT  = { 0: '#2b6cff', 0.4: '#a371f7', 0.7: '#f0883e', 1: '#ff2d2d' };
+const CSS_CO2  = 'linear-gradient(90deg,#0b6e4f,#3fd0ff,#ffd24a,#f0883e,#ff2d2d)';
+const CSS_JOBS = 'linear-gradient(90deg,#3fb950,#ffd24a,#f0883e,#ff2d2d)';
+const CSS_EVT  = 'linear-gradient(90deg,#2b6cff,#a371f7,#f0883e,#ff2d2d)';
+
+// Danger view thresholds, in feels-like °F. Chosen to line up with the National
+// Weather Service heat-index and cold-exposure categories.
+const HOT_BANDS  = [[90, 'Caution'], [103, 'Extreme caution'], [115, 'Danger'], [125, 'Extreme danger']];
+const COLD_BANDS = [[32, 'Freezing'], [15, 'Hard freeze'], [0, 'Frostbite risk'], [-20, 'Extreme cold']];
+const GRAD_HOT  = { 0: '#ffd24a', 0.35: '#f0883e', 0.7: '#ff2d2d', 1: '#7a0d0d' };
+const GRAD_COLD = { 0: '#9fe6ff', 0.35: '#3fd0ff', 0.7: '#2b6cff', 1: '#0a1f9c' };
+
+// Blob size is derived from how far apart the samples actually are on screen at
+// the current zoom, so the field stays continuous from whole-planet to street
+// level instead of turning into dots.
+function radiusForStep(stepDeg) {
+  const z = map.getZoom();
+  const a = map.project([0, 0], z), b = map.project([0, stepDeg], z);
+  const px = Math.abs(b.x - a.x);
+  return { radius: Math.max(9, Math.min(130, px * 0.85)), blur: Math.max(7, Math.min(110, px * 0.75)) };
+}
+function rescaleHeat() {
+  if (!heatLayer || !heatData) return;
+  const { radius, blur } = radiusForStep(heatData.stepDeg);
+  heatLayer.setOptions({ radius, blur });
+  if (heatLayer2) heatLayer2.setOptions({ radius, blur });
+  // Above zoom 5 the coarse world grid gets swapped for the fine regional one.
+  if (heatMode === 'temp' || heatMode === 'feels' || heatMode === 'danger') {
+    const want = wantRegional() ? 'regional' : 'global';
+    if (want !== heatScope) drawHeat();
+  }
+}
+function wantRegional() {
+  if (map.getZoom() < 5) return false;
+  const c = map.getCenter(), lon = ((c.lng + 540) % 360) - 180;
+  const inUS = c.lat > 24 && c.lat < 50 && lon > -125 && lon < -66;
+  const inEU = c.lat > 35 && c.lat < 56 && lon > -10 && lon < 21;
+  return inUS || inEU;
+}
+
+$('segHeat').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('segHeat').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  heatMode = b.dataset.v;
+  drawHeat();
+};
+$('paletteSel').value = palette;
+$('paletteSel').onchange = (e) => {
+  palette = e.target.value;
+  localStorage.setItem('palette', palette);
+  if (heatMode !== 'off') drawHeat();
+};
+
+function paintHeat(points, lo, hi, gradient, stepDeg, title, unit, cssRamp) {
+  layers.heat.clearLayers();
+  heatLayer2 = null;
+  const span = (hi - lo) || 1;
+  const { radius, blur } = radiusForStep(stepDeg);
+  heatLayer = L.heatLayer(
+    points.map((p) => [p.lat, p.lon, Math.max(0, Math.min(1, (p.v - lo) / span))]),
+    { radius, blur, max: 1, minOpacity: 0.3, gradient },
+  ).addTo(layers.heat);
+  heatData = { points, unit, lo, hi, stepDeg, title };
+  $('hudLegend').innerHTML = `<div class="ttl">${title}</div>
+    <div class="heatbar" style="background:${cssRamp}"></div>
+    <div class="heatends"><span>${fmt(lo, unit === 'ppm' ? 0 : 1)}${unit}</span>
+      <span>${fmt(hi, unit === 'ppm' ? 0 : 1)}${unit}</span></div>`;
+}
+
+// Danger view: paints only the places that are actually risky, hot in reds and
+// cold in blues, and leaves everything comfortable unpainted so the areas worth
+// watching are the only thing on the map.
+function paintDanger(points, stepDeg, scopeLabel) {
+  layers.heat.clearLayers();
+  const { radius, blur } = radiusForStep(stepDeg);
+  const hot = points.filter((p) => p.v >= HOT_BANDS[0][0]);
+  const cold = points.filter((p) => p.v <= COLD_BANDS[0][0]);
+  const hotInt = (v) => Math.max(0.12, Math.min(1, (v - 90) / 35));    // 90F -> 125F
+  const coldInt = (v) => Math.max(0.12, Math.min(1, (32 - v) / 52));   // 32F -> -20F
+
+  heatLayer = L.heatLayer(hot.map((p) => [p.lat, p.lon, hotInt(p.v)]),
+    { radius, blur, max: 1, minOpacity: 0.35, gradient: GRAD_HOT }).addTo(layers.heat);
+  heatLayer2 = L.heatLayer(cold.map((p) => [p.lat, p.lon, coldInt(p.v)]),
+    { radius, blur, max: 1, minOpacity: 0.35, gradient: GRAD_COLD }).addTo(layers.heat);
+
+  heatData = { points, unit: '°F', lo: -20, hi: 125, stepDeg, title: 'Danger (feels like)' };
+  const worstHot = hot.reduce((m, p) => Math.max(m, p.v), -999);
+  const worstCold = cold.reduce((m, p) => Math.min(m, p.v), 999);
+  const band = (v, bands, dir) => {
+    let name = '';
+    for (const [t, n] of bands) if (dir > 0 ? v >= t : v <= t) name = n;
+    return name;
+  };
+  $('hudLegend').innerHTML = `<div class="ttl">Watch out — ${scopeLabel}</div>
+    <div style="display:flex;gap:8px;margin:3px 0 4px">
+      <span style="flex:1"><span class="swatch" style="background:#ff2d2d"></span>hot ${hot.length}</span>
+      <span style="flex:1"><span class="swatch" style="background:#2b6cff"></span>cold ${cold.length}</span>
+    </div>
+    <div class="heatbar" style="background:linear-gradient(90deg,#0a1f9c,#3fd0ff,#9fe6ff,#101820,#ffd24a,#f0883e,#ff2d2d,#7a0d0d)"></div>
+    <div class="heatends"><span>-20°F</span><span>safe</span><span>125°F</span></div>
+    ${hot.length ? `<div style="margin-top:4px">Hottest <span class="val">${fmt(worstHot, 0)}°F</span>
+      — ${band(worstHot, HOT_BANDS, 1)}</div>` : ''}
+    ${cold.length ? `<div>Coldest <span class="val">${fmt(worstCold, 0)}°F</span>
+      — ${band(worstCold, COLD_BANDS, -1)}</div>` : ''}
+    ${!hot.length && !cold.length ? '<div>nothing past a danger threshold right now</div>' : ''}`;
+}
+
+async function drawHeat(fresh) {
+  if (heatMode === 'off') {
+    layers.heat.clearLayers(); heatLayer = null; heatData = null; heatScope = '';
+    $('hudLegend').innerHTML = `<div class="ttl">Field</div><div>off — pick one above</div>`;
+    return;
+  }
+  $('hudLegend').innerHTML = `<div class="ttl">Field</div><div>sampling…</div>`;
+
+  if (heatMode === 'temp' || heatMode === 'feels' || heatMode === 'danger') {
+    // danger is read off the feels-like field: heat index and wind chill are what
+    // actually hurt people, not the raw air temperature.
+    const metric = heatMode === 'temp' ? 'temp' : 'feels';
+    const regional = wantRegional();
+    heatScope = regional ? 'regional' : 'global';
+    const r = regional ? await load('/api/heat', {}, fresh)
+                       : await load('/api/globalheat', { metric }, fresh);
+    if (!r.ok || !r.data) {
+      $('hudLegend').innerHTML = `<div class="ttl">${heatMode}</div><div style="color:#f85149">source down</div>`;
+      return;
+    }
+    const d = r.data;
+    const pts = regional
+      ? d.points.map((p) => ({ lat: p.lat, lon: p.lon, v: metric === 'feels' ? p.feelsF : p.tempF }))
+          .filter((p) => p.v != null)
+      : d.points;
+    const step = regional ? 2 : d.stepDeg;
+    const scope = regional ? '2° regional' : d.stepDeg + '° world';
+
+    if (heatMode === 'danger') { paintDanger(pts, step, scope); return; }
+
+    // the world grid already reports 5th/95th percentiles of whichever metric it
+    // fetched; the regional grid carries both, so take the range from the points
+    let lo, hi;
+    if (regional) {
+      const vs = pts.map((p) => p.v);
+      lo = Math.min(...vs); hi = Math.max(...vs);
+    } else { lo = d.lo; hi = d.hi; }
+
+    const pal = PALETTES[palette];
+    paintHeat(pts, lo, hi, pal.grad, step,
+      `${heatMode === 'feels' ? 'Feels like' : 'Temperature'} · ${scope} grid (${pts.length} pts)`,
+      '°F', pal.css);
+    return;
+  }
+
+  if (heatMode === 'co2') {
+    heatScope = 'global';
+    const r = await load('/api/globalheat', { metric: 'co2' }, fresh);
+    if (!r.ok || !r.data) {
+      $('hudLegend').innerHTML = `<div class="ttl">CO₂</div><div style="color:#f85149">source down</div>`;
+      return;
+    }
+    const d = r.data;
+    paintHeat(d.points, d.lo, d.hi, GRAD_CO2, d.stepDeg,
+      `CO₂ near the ground · ${d.stepDeg}° world grid (${d.returned} pts)`, 'ppm', CSS_CO2);
+    return;
+  }
+
+  if (heatMode === 'jobs') {
+    heatScope = 'states';
+    if (!JOB) {
+      $('hudLegend').innerHTML = `<div class="ttl">Jobless</div><div>needs the FRED key</div>`;
+      return;
+    }
+    const pts = JOB.states.filter((s) => s.ur && s.ur.ok)
+      .map((s) => ({ lat: s.lat, lon: s.lon, v: s.ur.latest.v }));
+    if (!pts.length) { $('hudLegend').innerHTML = `<div class="ttl">Jobless</div><div>no state data</div>`; return; }
+    const vals = pts.map((p) => p.v);
+    paintHeat(pts, Math.min(...vals), Math.max(...vals), GRAD_JOBS, 6,
+      `Unemployment rate (${pts.length} states)`, '%', CSS_JOBS);
+    return;
+  }
+
+  if (heatMode === 'events') {
+    heatScope = 'events';
+    if (!EVENT_POINTS.length) { $('hudLegend').innerHTML = `<div class="ttl">Events</div><div>none loaded</div>`; return; }
+    const pts = EVENT_POINTS.map((p) => ({ lat: p[0], lon: p[1], v: p[2] }));
+    paintHeat(pts, 0, 3, GRAD_EVT, 3, `Where things are happening (${pts.length} points)`, '', CSS_EVT);
+    heatData.unit = '';
+    return;
+  }
+}
+
+// --------------------------------------------------------------- map draw
+let EVENT_POINTS = [];
+const SEV = { Extreme: '#ff2d2d', Severe: '#f85149', Moderate: '#d29922' };
+
+async function drawMap(fresh) {
+  const [radar, alerts, quakes, events] = await Promise.all([
+    load('/api/radar', {}, fresh), load('/api/alerts', {}, fresh),
+    load('/api/quakes', {}, fresh), load('/api/events', {}, fresh),
+  ]);
+  ['radar', 'alerts', 'quakes', 'events'].forEach((n, i) =>
+    (FEEDS[n] = { ok: [radar, alerts, quakes, events][i].ok, at: [radar, alerts, quakes, events][i].fetchedAt }));
+
+  layers.radar.clearLayers(); frameLayers = {}; stopPlay();
+  if (radar.ok && radar.data?.frames?.length) {
+    radarHost = radar.data.host; radarFrames = radar.data.frames;
+    $('frameSlider').max = String(radarFrames.length - 1);
+    const nowIdx = Math.max(0, radarFrames.findIndex((f) => f.time * 1000 > Date.now()) - 1);
+    showFrame(nowIdx < 0 ? radarFrames.length - 1 : nowIdx);
+    layerCounts.radar = radarFrames.length + ' frames';
+  } else { radarFrames = []; $('radarStamp').textContent = 'down'; layerCounts.radar = 'down'; }
+
+  layers.alerts.clearLayers();
+  EVENT_POINTS = [];
+  let alertCount = 0;
+  if (alerts.ok && alerts.data) {
+    for (const f of alerts.data.features) {
+      if (!f.geometry) continue;
+      const p = f.properties;
+      const gj = L.geoJSON(f.geometry, {
+        style: { color: SEV[p.severity] || '#8b949e', weight: 1, fillOpacity: 0.22 },
+      }).bindPopup(`<b>${p.event}</b><br>${p.severity} · ${p.areaDesc || ''}<br>
+        <small>${(p.headline || '').slice(0, 220)}</small>`).addTo(layers.alerts);
+      const c = gj.getBounds().getCenter();
+      EVENT_POINTS.push([c.lat, c.lng, p.severity === 'Extreme' ? 3 : p.severity === 'Severe' ? 2 : 1]);
+      alertCount++;
+    }
+  }
+  layerCounts.alerts = alertCount;
+
+  layers.quakes.clearLayers();
+  if (quakes.ok && quakes.data) {
+    for (const f of quakes.data.features) {
+      const [lon, lat] = f.geometry.coordinates;
+      const m = f.properties.mag || 0;
+      L.circleMarker([lat, lon], { radius: 3 + m * 1.8, color: '#d29922', weight: 1.2, fillOpacity: 0.45 })
+        .bindPopup(`<b>M ${m}</b> ${f.properties.place}<br>
+          <small>${new Date(f.properties.time).toLocaleString()}</small>`).addTo(layers.quakes);
+      EVENT_POINTS.push([lat, lon, Math.max(1, m - 2)]);
+    }
+    layerCounts.quakes = quakes.data.features.length;
+  }
+
+  layers.events.clearLayers();
+  const GDACS_COLOR = { Red: '#ff2d2d', Orange: '#f0883e', Green: '#a371f7' };
+  if (events.ok && events.data?.features) {
+    for (const f of events.data.features) {
+      const [lon, lat] = f.geometry.coordinates;
+      const p = f.properties;
+      const colour = p.kind === 'gdacs' ? (GDACS_COLOR[p.level] || '#a371f7') : '#3fd0ff';
+      L.circleMarker([lat, lon], {
+        radius: p.level === 'Red' ? 8 : p.level === 'Orange' ? 6 : 4.5,
+        color: colour, fillColor: colour, weight: 1, fillOpacity: 0.55,
+      }).bindPopup(`<b>${p.title || 'event'}</b><br>
+        ${p.category || ''}${p.level ? ' · ' + p.level + ' alert' : ''}${p.country ? ' · ' + p.country : ''}<br>
+        <small>${p.date ? new Date(p.date).toLocaleString() : ''}</small>
+        ${p.link ? `<br><a href="${p.link}" target="_blank" rel="noopener">details</a>` : ''}`)
+        .addTo(layers.events);
+      EVENT_POINTS.push([lat, lon, p.level === 'Red' ? 3 : p.level === 'Orange' ? 2 : 1]);
+    }
+    layerCounts.events = events.data.features.length;
+  }
+
+  const down = [['radar', radar], ['alerts', alerts], ['quakes', quakes], ['events', events]]
+    .filter(([, r]) => !r.ok).map(([n]) => n);
+  $('d-map').className = 'dot ' + (down.length ? 'stale' : 'live');
+  $('m-map').textContent =
+    `${alertCount} alerts · ${quakes.data?.features?.length || 0} quakes · ` +
+    `${events.data?.features?.length || 0} events · updated ${ago(radar.fetchedAt)}` +
+    (down.length ? `  ·  DOWN: ${down.join(', ')}` : '');
+  drawLayerPanel();
+  if (heatMode === 'events') drawHeat();
+}
+
+// -------------------------------------------------------------- conflicts
+let WARS = null;
+async function drawConflicts(fresh) {
+  const r = mark('conflicts', await load('/api/conflicts', {}, fresh));
+  if (!r.ok || !r.data) { $('b-conflicts').innerHTML = `<div class="err">Conflict feed unavailable.</div>`; return; }
+  WARS = r.data;
+  const max = Math.max(1, WARS.maxCoverage);
+  const rows = WARS.theatres.slice().sort((a, b) => b.coverage - a.coverage);
+
+  $('b-conflicts').innerHTML = `<div class="warlist">${rows.map((t) => `
+    <div class="war war-${t.kind}">
+      <div class="top"><b>${t.name}</b><span class="kind">${t.kind}</span>
+        <span class="cov">${t.ok ? t.coverage + (t.coverage >= 100 ? '+' : '') + ' stories/48h' : 'no check'}</span></div>
+      <div class="parties">${t.parties}</div>
+      <div class="covbar"><span style="width:${Math.round((t.coverage / max) * 100)}%"></span></div>
+      ${t.headlines.slice(0, 2).map((h) => `<div class="hl">
+        <a href="${h.url}" target="_blank" rel="noopener">${h.title}</a>
+        <span>${h.published ? ' · ' + ago(h.published) : ''}</span></div>`).join('')
+        || '<div class="hl" style="color:var(--faint)">no coverage in the last 48 hours</div>'}
+    </div>`).join('')}</div>
+    <div class="note">The list of theatres is reviewed by hand (last on ${WARS.reviewed}) — the
+      <i>coverage</i> number beside each one is live: how many stories the wires filed in 48 hours.
+      100+ means the feed hit its own limit, so treat it as "saturated", not as a precise count.
+      ${WARS.checked}/${WARS.total} theatres checked successfully. This measures attention, not casualties.</div>`;
+
+  layers.conflict.clearLayers();
+  for (const t of rows) {
+    L.marker([t.lat, t.lon], {
+      icon: L.divIcon({ className: '', html: `<div class="warpin ${t.kind === 'tension' ? 'tension' : ''}"></div>`,
+        iconSize: [14, 14], iconAnchor: [7, 7] }),
+    }).bindPopup(`<b>${t.name}</b> <span style="color:#8b9bb0">${t.kind}</span><br>
+      ${t.parties}<br>
+      <b>${t.coverage}${t.coverage >= 100 ? '+' : ''}</b> stories in 48h
+      ${t.headlines.slice(0, 3).map((h) => `<div style="margin-top:4px;font-size:11.5px">
+        <a href="${h.url}" target="_blank" rel="noopener">${h.title}</a></div>`).join('')}`)
+      .addTo(layers.conflict);
+  }
+  layerCounts.conflict = rows.length;
+  drawLayerPanel();
+}
+
+// ----------------------------------------------------------------- energy
+let ENERGY = null;
+const FUEL_COLORS = {
+  Coal: '#ff2d2d', Oil: '#f0883e', Gas: '#ffd24a', Petcoke: '#f0883e',
+  Nuclear: '#c58cff', Hydro: '#31c8ff', Wind: '#7ee787', Solar: '#ffe066',
+  Geothermal: '#ff9db1', Biomass: '#8fd694', Waste: '#a1a1aa', Storage: '#79c0ff',
+  'Wave and Tidal': '#31c8ff', Cogeneration: '#d0a679', Other: '#8b949e',
+};
+const FOSSIL = new Set(['Coal', 'Oil', 'Gas', 'Petcoke', 'Cogeneration']);
+
+async function drawEnergy(fresh) {
+  const r = mark('energy', await load('/api/energy', {}, fresh));
+  if (!r.ok || !r.data) { $('b-energy').innerHTML = `<div class="err">Power plant data unavailable.</div>`; return; }
+  ENERGY = r.data;
+  const d = ENERGY;
+  $('b-energy').innerHTML = `
+    <div class="tiles" style="margin-bottom:10px">
+      <div class="tile"><div class="k">Plants mapped</div><div class="v">${fmt(d.shown)}</div>
+        <div class="c flat">of ${fmt(d.totalPlants)} · ${d.minMw} MW and up</div></div>
+      <div class="tile"><div class="k">Fossil share of capacity</div>
+        <div class="v ${d.fossilPct > 50 ? 'down' : 'up'}">${d.fossilPct}%</div>
+        <div class="c flat">coal, gas, oil</div></div>
+      <div class="tile"><div class="k">Biggest generator</div>
+        <div class="v" style="font-size:15px">${d.topCountries[0].country}</div>
+        <div class="c flat">${fmt(Math.round(d.topCountries[0].mw / 1000))} GW</div></div>
+    </div>
+    ${d.mix.slice(0, 9).map((m) => `<div class="mixrow">
+      <span class="nm">${m.fuel}</span>
+      <span class="track"><span style="width:${Math.min(100, m.pct * 2.4)}%;background:${FUEL_COLORS[m.fuel] || '#8b949e'}"></span></span>
+      <span class="pc">${m.pct}%</span></div>`).join('')}
+    <div class="note">Global installed capacity by fuel. Turn on the <b>Power plants</b> layer to see
+      where they are; the filter in the map panel narrows by fuel. ${d.note}.</div>`;
+  drawEnergyLayer();
+}
+
+function drawEnergyLayer() {
+  layers.energy.clearLayers();
+  if (!ENERGY) return;
+  const f = $('fuelFilter').value;
+  const keep = (p) =>
+    f === 'all' ? true :
+    f === 'fossil' ? FOSSIL.has(p.f) :
+    f === 'clean' ? !FOSSIL.has(p.f) : p.f === f;
+  const shown = ENERGY.plants.filter(keep);
+  for (const p of shown) {
+    L.circleMarker([p.lat, p.lon], {
+      radius: Math.max(2.5, Math.min(11, Math.sqrt(p.mw) / 11)),
+      color: FUEL_COLORS[p.f] || '#8b949e', fillColor: FUEL_COLORS[p.f] || '#8b949e',
+      weight: 0.7, fillOpacity: 0.5,
+    }).bindPopup(`<b>${p.n}</b><br>${p.f} · ${fmt(p.mw)} MW<br>
+      <span style="color:#8b9bb0">${p.c}</span>`).addTo(layers.energy);
+  }
+  layerCounts.energy = shown.length;
+  drawLayerPanel();
+}
+$('fuelFilter').onchange = () => { if (!ENERGY) drawEnergy(false); else drawEnergyLayer(); };
+
+// --------------------------------------------------------- road cameras
+// 6,000+ public transport-department cameras. Only the ones in view are drawn,
+// and only past CAM_MIN_ZOOM - at world zoom they would be a solid smear and
+// every popup would pull a live image.
+let CAMS = null;
+async function loadCameras(fresh) {
+  const r = mark('cameras', await load('/api/cameras', {}, fresh));
+  if (r.ok && r.data) {
+    CAMS = r.data.cameras;
+    CAMS.total = r.data.total;
+    CAMS.sources = r.data.sources;
+  }
+  drawCameraLayer();
+}
+
+function camPopup(c) {
+  const bust = `${c.img}${c.img.includes('?') ? '&' : '?'}t=${Date.now()}`;
+  return `<div style="min-width:250px">
+    <b>${c.n}</b>
+    <div style="color:#8b9bb0;font-size:11px;margin:2px 0 6px">${c.src}${c.road ? ' · ' + c.road : ''}</div>
+    <img src="${bust}" alt="camera view" style="width:100%;max-width:320px;border-radius:5px;
+      border:1px solid #1b2735;display:block"
+      onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+    <div style="display:none;color:#f85149;font-size:12px">This camera is not sending a picture.</div>
+    <div style="margin-top:5px;font-size:11px">
+      <a href="${c.img}" target="_blank" rel="noopener">open image ↗</a>
+      ${c.stream ? ` · <a href="${c.stream}" target="_blank" rel="noopener">video stream ↗</a>` : ''}
+    </div></div>`;
+}
+
+function drawCameraLayer() {
+  layers.cameras.clearLayers();
+  if (!CAMS || !map.hasLayer(layers.cameras)) return;
+  if (map.getZoom() < CAM_MIN_ZOOM) {
+    layerCounts.cameras = `zoom in (${CAMS.total})`;
+    drawLayerPanel();
+    return;
+  }
+  const b = map.getBounds();
+  const inView = CAMS.filter((c) => b.contains([c.lat, c.lon]));
+  const shown = inView.slice(0, 600);       // hard cap so a wide pan stays smooth
+  for (const c of shown) {
+    L.circleMarker([c.lat, c.lon], {
+      radius: 5, color: '#3fd0ff', fillColor: '#0d1620', weight: 2, fillOpacity: 0.9,
+    }).bindPopup(() => camPopup(c), { maxWidth: 340 }).addTo(layers.cameras);
+  }
+  layerCounts.cameras = shown.length + (inView.length > shown.length ? `/${inView.length}` : '') + ' in view';
+  drawLayerPanel();
+}
+map.on('moveend zoomend', () => { if (map.hasLayer(layers.cameras)) drawCameraLayer(); });
+
+// ----------------------------------------------------------- planet check
+async function drawPlanet(fresh) {
+  const [g, c] = await Promise.all([
+    load('/api/climateglobal', {}, fresh),
+    load('/api/carbon', {}, fresh),
+  ]);
+  mark('planet', g.ok ? g : c);
+  if (!g.ok && !c.ok) { $('b-planet').innerHTML = `<div class="err">Global climate sources unavailable.</div>`; return; }
+  const d = g.data || {}, k = c.data || {};
+  const at = d.airTemp || {}, sst = d.seaSurface || {};
+  const tile = (label, value, sub, note, bad, stale) => `
+    <div class="tile ${value == null || stale ? 'dead' : ''}"><div class="k">${label}${
+      stale ? ' <span style="color:var(--warn)">(archived, not current)</span>' : ''}</div>
+      <div class="v ${bad === undefined ? '' : bad ? 'down' : 'up'}">${value == null ? 'no data' : value}</div>
+      <div class="c flat">${sub || ''}</div><div class="asof">${note || ''}</div></div>`;
+
+  $('b-planet').innerHTML = `<div class="tiles">
+    ${tile('World air temperature today',
+      at.anomalyC == null ? null : sign(c2f(at.anomalyC), 2) + '°F',
+      at.value == null ? '' : `${fmt(c2f(at.value) + 32, 1)}°F vs a ${at.baselineYears}-yr normal`,
+      `ERA5 · ${at.year || ''}`, at.anomalyC > 0, at.stale)}
+    ${tile('Ocean surface temperature',
+      sst.anomalyC == null ? null : sign(c2f(sst.anomalyC), 2) + '°F',
+      sst.value == null ? '' : `${fmt(c2f(sst.value) + 32, 1)}°F sea surface`,
+      `NOAA OISST · ${sst.year || ''}`, sst.anomalyC > 0, sst.stale)}
+    ${tile('NOAA monthly anomaly',
+      d.noaa && !d.noaa.error ? sign(c2f(d.noaa.anomalyC), 2) + '°F' : null,
+      d.noaa && d.noaa.baseline ? 'vs ' + d.noaa.baseline : '',
+      d.noaa && d.noaa.month ? d.noaa.month : '', d.noaa && d.noaa.anomalyC > 0)}
+    ${tile('El Niño / La Niña',
+      d.enso && !d.enso.error ? d.enso.phase : null,
+      d.enso && d.enso.oni != null ? 'ONI index ' + d.enso.oni : '',
+      d.enso && d.enso.season ? d.enso.season + ' ' + d.enso.year : '')}
+    ${tile('CO₂ in the air',
+      k.co2 && !k.co2.error ? fmt(k.co2.trendPpm, 1) + ' ppm' : null,
+      k.co2 && k.co2.growthPpm != null ? sign(k.co2.growthPpm, 2) + ' ppm in a year' : '',
+      k.co2 && k.co2.date ? 'NOAA global · ' + k.co2.date : '', true)}
+    ${tile('vs pre-industrial',
+      k.mauna && !k.mauna.error ? '+' + k.mauna.risePct + '%' : null,
+      k.mauna && k.mauna.ppm ? `${fmt(k.mauna.ppm, 1)} ppm now vs 280 ppm then` : '',
+      k.mauna && k.mauna.month ? 'Mauna Loa · ' + k.mauna.month : '', true)}
+    ${tile('Methane',
+      k.methane && !k.methane.error ? fmt(k.methane.ppb, 0) + ' ppb' : null,
+      k.methane && k.methane.growthPpb != null ? sign(k.methane.growthPpb, 1) + ' ppb in a year' : '',
+      k.methane && k.methane.month ? 'NOAA global · ' + k.methane.month : '', true)}
+  </div>
+  ${k.co2 && k.co2.history ? `<div style="margin-top:9px">${spark(k.co2.history, 300, 40)}
+    <div class="asof">CO₂ trend, last two years</div></div>` : ''}
+  <div class="note">Green means the planet moved the way we would want, red the other way.
+    ${d.missing && d.missing.length ? 'Not shown: ' + d.missing.join('; ') + '.' : ''}</div>`;
+}
+
+// ------------------------------------------------------- watched weather
+let WATCH = [], selected = 0;
+function tempColour(f) {
+  if (f == null) return 'var(--ink)';
+  if (f >= 95) return '#ff2d2d';
+  if (f >= 85) return '#f0883e';
+  if (f >= 70) return '#ffd24a';
+  if (f >= 55) return '#3fb950';
+  if (f >= 40) return '#31c8ff';
+  return '#2b6cff';
+}
+async function drawWatch(fresh) {
+  const r = mark('watch', await load('/api/watch', {}, fresh));
+  const el = $('b-watch');
+  if (!r.ok || !r.data) { el.innerHTML = `<div class="err">Weather source unavailable.</div>`; return; }
+  WATCH = r.data;
+  el.innerHTML = `<div class="wx">${WATCH.map((w, i) => {
+    const c = w.current;
+    return `<div class="wxc ${i === selected ? 'sel' : ''}" data-i="${i}">
+      <div class="nm">${w.name}<span>${w.region}${w.note ? ' · ' + w.note : ''}</span></div>
+      <div class="big" style="color:${tempColour(c.tempF)}">${fmt(c.tempF, 0)}°F</div>
+      <div class="cond">${c.text}</div>
+      <div class="sub">feels ${fmt(c.feelsF, 0)}° · ${fmt(c.humidity, 0)}% · wind ${fmt(c.windMph, 0)} mph</div>
+      <div class="days">${w.daily.slice(1, 5).map((d) => `
+        <div>${new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
+          <b>${fmt(d.maxF, 0)}°</b>${fmt(d.minF, 0)}°
+          ${d.rainPct != null ? `<div style="color:#3fd0ff">${d.rainPct}%</div>` : ''}
+        </div>`).join('')}</div>
+      <div class="asof">local time ${c.time ? c.time.slice(11, 16) : '—'} · ${w.timezone || ''}</div>
+    </div>`;
+  }).join('')}</div>
+  <div class="note">Click a place to fly the map there and point the local-climate panel at it.</div>`;
+  el.querySelectorAll('.wxc').forEach((card) => {
+    card.onclick = () => selectPlace(Number(card.dataset.i), true);
+  });
+  layers.watch.clearLayers();
+  WATCH.forEach((w) => {
+    L.marker([w.lat, w.lon], {
+      icon: L.divIcon({ className: '', html: `<div class="watchpin">${w.name} ${fmt(w.current.tempF, 0)}°</div>`,
+        iconSize: null, iconAnchor: [0, 0] }),
+    }).bindPopup(`<b>${w.name}</b> ${w.note ? '<i>' + w.note + '</i>' : ''}<br>
+      <span style="font-size:20px;font-weight:600">${fmt(w.current.tempF, 0)}°F</span> ${w.current.text}<br>
+      feels ${fmt(w.current.feelsF, 0)}° · ${fmt(w.current.humidity, 0)}% humidity ·
+      wind ${fmt(w.current.windMph, 0)} mph`).addTo(layers.watch);
+  });
+  layerCounts.watch = WATCH.length;
+  drawLayerPanel();
+  $('place').innerHTML = WATCH.map((w, i) =>
+    `<option value="${i}" ${i === selected ? 'selected' : ''}>${w.name}${w.note ? ' (' + w.region + ')' : ''}</option>`).join('');
+}
+function selectPlace(i, fly) {
+  selected = i;
+  $('place').value = String(i);
+  document.querySelectorAll('.wxc').forEach((c) => c.classList.toggle('sel', Number(c.dataset.i) === i));
+  if (fly && WATCH[i]) map.flyTo([WATCH[i].lat, WATCH[i].lon], 8, { duration: 0.8 });
+  drawClimate(false);
+}
+$('place').onchange = (e) => selectPlace(Number(e.target.value), true);
+
+// ---------------------------------------------------------------- climate
+async function drawClimate(fresh) {
+  const w = WATCH[selected];
+  if (!w) return;
+  const r = mark('climate', await load('/api/climate', { lat: w.lat, lon: w.lon }, fresh));
+  const el = $('b-climate');
+  if (r.ok) $('m-climate').textContent += ' · ' + w.name;
+  if (!r.ok || !r.data) { el.innerHTML = `<div class="err">Climate source unavailable.</div>`; return; }
+  const d = r.data, l = d.local;
+  const anomF = c2f(l.tempAnomalyC);
+  el.innerHTML = `
+    <div class="tiles">
+      <div class="tile"><div class="k">${w.name}: last 30 days vs ${d.window.baselineYears}-yr normal</div>
+        <div class="v ${cls(anomF)}">${sign(anomF, 1)}°F</div>
+        <div class="c flat">${fmt(c2f(l.recentMeanTempC) + 32, 1)}°F vs ${fmt(c2f(l.baselineMeanTempC) + 32, 1)}°F normal</div>
+        <div class="asof">${d.window.start} → ${d.window.end}</div></div>
+      <div class="tile"><div class="k">Rain vs normal (30d)</div>
+        <div class="v ${cls(l.precipAnomalyPct)}">${sign(l.precipAnomalyPct, 0)}%</div>
+        <div class="c flat">${fmt(l.recentPrecipMm / 25.4, 2)}" vs ${fmt(l.baselinePrecipMm / 25.4, 2)}" normal</div></div>
+    </div>
+    <div class="note">How far the last 30 days sat above or below the same 30 days averaged over the
+      previous ${d.window.baselineYears} years at ${w.name}. World-scale numbers are in Planet check above.</div>`;
+}
+
+// ---------------------------------------------------------------- markets
+async function drawMarkets(fresh) {
+  const r = mark('markets', await load('/api/markets', {}, fresh));
+  const el = $('b-markets');
+  if (!r.ok || !r.data) { el.innerHTML = `<div class="err">Market source unavailable.</div>`; return; }
+  const q = r.data.quotes || [], rates = r.data.rates || [];
+  el.innerHTML = `
+    <div class="tiles">${q.map((x) => x.ok ? `
+      <div class="tile"><div class="k">${x.label}</div>
+        <div class="v">${fmt(x.close, x.close < 10 ? 4 : 2)}</div>
+        <div class="c ${cls(x.chgPct)}">${sign(x.chgPct, 2)}% on day</div>
+        <div class="asof">${x.date ? ago(x.date) : ''}${x.state ? ' · ' + x.state.toLowerCase() : ''}</div>
+        ${spark(x.history)}</div>` : `
+      <div class="tile dead"><div class="k">${x.label}</div><div class="v">no quote</div>
+        <div class="asof">${x.error || ''}</div></div>`).join('')}
+    </div>
+    ${rates.length ? `<div class="tiles" style="margin-top:8px">
+      ${rates.map((s) => seriesTile(s, { decimals: 2 })).join('')}</div>` : ''}
+    <div class="note">Prices from Yahoo Finance, crypto from CoinGecko, rates and CPI from FRED.</div>`;
+}
+
+async function drawKalshi(fresh) {
+  const r = mark('kalshi', await load('/api/kalshi', {}, fresh));
+  const el = $('b-kalshi');
+  if (!r.ok || !r.data) { el.innerHTML = `<div class="err">Kalshi unavailable.</div>`; return; }
+  const d = r.data;
+  el.innerHTML = `<div class="kal">${d.rows.map((row) => {
+    if (!row.ok) return `<div class="kalrow dead"><div class="lab"><span>${row.label}</span></div>
+      <div class="q">${row.error}</div></div>`;
+    const m = row.market;
+    return `<div class="kalrow">
+      <div class="lab"><span>${row.label}</span><span class="pct">${m.yes}%</span></div>
+      <div class="q">${m.title}${m.subtitle ? ' — ' + m.subtitle : ''}</div>
+      <div class="bar"><span style="width:${m.yes}%"></span></div>
+      <div class="asof">closes ${new Date(m.closes).toLocaleDateString()} · ${row.candidates} live contracts</div>
+    </div>`;
+  }).join('')}</div>
+  <div class="note">${d.live} of ${d.asked} series had a live contract. The number is the market's own
+    odds of "yes". For ladders the contract shown is the one nearest a coin flip.</div>`;
+}
+
+// ------------------------------------------------------------- news feeds
+async function drawNews(fresh) {
+  const r = mark('news', await load('/api/news', {}, fresh));
+  const el = $('b-news');
+  if (!r.ok || !r.data) { el.innerHTML = `<div class="err">News source unavailable.</div>`; return; }
+  const d = r.data;
+  el.innerHTML = `<ul class="news">${d.articles.map((a) => `
+    <li><a href="${a.url}" target="_blank" rel="noopener">${a.title}</a>
+      <div class="src">${a.source} · ${a.published ? ago(a.published) : ''}</div></li>`).join('')}</ul>
+    <div class="note">${d.feedsOk} of ${d.feedsTried} wire feeds answered${
+      d.feedsFailed ? ` — <span class="err">${d.feedsFailed} silent</span>` : ''}.</div>`;
+}
+
+let MKTNEWS = null, mnRegion = 'us';
+async function drawMarketNews(fresh) {
+  const r = mark('marketnews', await load('/api/marketnews', {}, fresh));
+  if (!r.ok || !r.data) { $('b-marketnews').innerHTML = `<div class="err">Market news unavailable.</div>`; return; }
+  MKTNEWS = r.data;
+  renderMarketNews();
+}
+function renderMarketNews() {
+  if (!MKTNEWS) return;
+  const g = MKTNEWS[mnRegion] || { articles: [], feedsOk: 0, feedsTried: 0 };
+  $('b-marketnews').innerHTML = `<ul class="news">${g.articles.map((a) => `
+    <li><a href="${a.url}" target="_blank" rel="noopener">${a.title}</a>
+      <div class="src">${a.source} · ${a.published ? ago(a.published) : ''}</div></li>`).join('')}</ul>
+    <div class="note">${g.feedsOk} of ${g.feedsTried} feeds answered for this region.</div>`;
+}
+$('mnTabs').onclick = (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('mnTabs').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  mnRegion = b.dataset.r;
+  renderMarketNews();
+};
+
+// ---------------------------------------------------------------- live tv
+let TV = null, tvKey = null;
+async function drawLiveTv(fresh) {
+  const r = mark('livetv', await load('/api/livetv', {}, fresh));
+  if (!r.ok || !r.data) { $('b-livetv').innerHTML = `<div class="err">Could not reach YouTube.</div>`; return; }
+  TV = r.data.channels;
+  $('m-livetv').textContent += ` · ${r.data.liveNow} of ${TV.length} on air`;
+  $('tvTabs').innerHTML = TV.map((c) => `
+    <button data-k="${c.key}" class="${c.isLive ? '' : 'offair'}">${c.name}${c.isLive ? '' : ' (off air)'}</button>`).join('');
+  $('tvTabs').onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    playChannel(b.dataset.k);
+  };
+  playChannel(tvKey && TV.some((c) => c.key === tvKey) ? tvKey : (TV.find((c) => c.isLive) || TV[0]).key);
+}
+function playChannel(key) {
+  tvKey = key;
+  const c = TV.find((x) => x.key === key);
+  $('tvTabs').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.k === key));
+  if (!c) return;
+  const src = c.videoId ? `https://www.youtube.com/embed/${c.videoId}?rel=0`
+                        : `https://www.youtube.com/embed/live_stream?channel=${c.id}`;
+  $('b-livetv').innerHTML = `
+    <div class="tv"><iframe src="${src}" title="${c.name}" allowfullscreen
+      allow="accelerometer; encrypted-media; picture-in-picture; fullscreen"></iframe></div>
+    <div class="tvfoot">
+      ${c.isLive ? '<span class="livebadge">● LIVE</span>' : '<span>not live right now — latest stream</span>'}
+      <span style="color:var(--ink)">${c.title || c.name}</span>
+      <a href="https://www.youtube.com/${c.handle}/live" target="_blank" rel="noopener"
+         style="margin-left:auto">open on YouTube ↗</a>
+    </div>`;
+}
+
+// ---------------------------------------------------------------- jobless
+let JOB = null;
+let stSort = { key: 'ur', dir: -1 };
+async function drawJobless(fresh) {
+  const r = mark('jobless', await load('/api/jobless', {}, fresh));
+  if (!r.ok || !r.data) {
+    $('j-nat').innerHTML = `<div class="err">Jobless data unavailable — ${r.error || 'no FRED key?'}</div>`;
+    return;
+  }
+  JOB = r.data;
+
+  // The jobless panel is the only one that needs a key. If it is missing or
+  // wrong, say so once, loudly, with the fix - not the same error on 200 tiles.
+  if (JOB.needsKey || JOB.keyRejected) {
+    $('j-nat').innerHTML = `
+      <div style="background:var(--panel2);border:1px solid var(--warn);border-radius:9px;padding:14px 16px">
+        <div style="color:var(--warn);font-weight:600;margin-bottom:6px">
+          ${JOB.keyRejected ? 'FRED rejected that key' : 'Jobless data needs a free FRED key'}</div>
+        <div style="font-size:12.5px;line-height:1.6;color:var(--dim)">
+          Everything else on this page works without a key. Unemployment, weekly claims,
+          JOLTS and the state table all come from the St. Louis Fed, which asks for one.
+          <ol style="margin:8px 0 4px 18px;padding:0">
+            <li>Get a free key at
+              <a href="https://fredaccount.stlouisfed.org/apikeys" target="_blank" rel="noopener">
+              fredaccount.stlouisfed.org/apikeys</a> — takes about a minute</li>
+            <li>Open <code style="color:var(--ink)">${JOB.envPath || 'dashboard\\.env'}</code></li>
+            <li>Paste it after <code style="color:var(--ink)">FRED_API_KEY=</code> and save</li>
+            <li>Close the black server window and run <b>start.cmd</b> again</li>
+          </ol>
+          ${JOB.keyRejected ? '<div style="color:var(--down);margin-top:4px">A key is present but FRED '
+            + 'would not accept it — check for a stray space or a truncated paste.</div>' : ''}
+        </div>
+      </div>`;
+    $('j-st').innerHTML = ''; $('j-sec').innerHTML = '';
+    $('j-cov').textContent = '';
+    return;
+  }
+
+  const invert = new Set(['ICSA','IC4WSA','ICNSA','CCSA','UNRATE','U6RATE','UNEMPLOY',
+                          'UEMPMED','UEMP27OV','JTSLDR','SAHMREALTIME']);
+  $('j-nat').innerHTML = `<div class="tiles">${JOB.national.map((s) =>
+    seriesTile(s, { invert: invert.has(s.id),
+      decimals: (s.units === '%' || s.units === 'pts' || s.units === 'weeks' || s.units === 'hours') ? 1 : 0,
+      spark: true })).join('')}</div>
+    <div class="note">Claims are weekly; rates and payrolls are monthly. Green means the labor
+      market got better, red means it got worse — not simply up or down.</div>`;
+  $('j-sec').innerHTML = `<div class="tiles">${JOB.sectors.map((s) =>
+    seriesTile(s, { decimals: 0, spark: true })).join('')}</div>
+    <div class="note">Jobs by industry, in thousands of workers.</div>`;
+  renderStates();
+  const c = JOB.coverage;
+  $('j-cov').innerHTML =
+    `Coverage: ${c.statesWithRate}/${c.statesRequested} states reporting · ` +
+    `${c.nationalOk}/${c.nationalRequested} national series · ` +
+    `${c.sectorsOk}/${c.sectorsRequested} industries. ` +
+    (c.statesWithRate < c.statesRequested
+      ? `<span class="err">Missing states are shown greyed, not skipped.</span>` : '');
+  drawJobsLayer();
+  if (heatMode === 'jobs') drawHeat();
+}
+
+function renderStates() {
+  if (!JOB) return;
+  const rows = JOB.states.slice().sort((a, b) => {
+    const get = (s) => ({
+      name: s.name,
+      ur: s.ur && s.ur.ok ? s.ur.latest.v : -1,
+      urChg: s.ur && s.ur.ok ? (s.ur.chg ?? 0) : -999,
+      ic: s.initialClaims && s.initialClaims.ok ? s.initialClaims.latest.v : -1,
+      cc: s.continuedClaims && s.continuedClaims.ok ? s.continuedClaims.latest.v : -1,
+      pay: s.payrolls && s.payrolls.ok ? (s.payrolls.yoyPct ?? -999) : -999,
+    })[stSort.key];
+    const av = get(a), bv = get(b);
+    if (typeof av === 'string') return av.localeCompare(bv) * stSort.dir;
+    return (av - bv) * stSort.dir;
+  });
+  $('j-st').innerHTML = `<div class="scroll"><table>
+    <thead><tr>
+      <th data-k="name">State</th><th class="num" data-k="ur">Unemp. rate</th>
+      <th class="num" data-k="urChg">Chg</th><th class="num" data-k="ic">Initial claims</th>
+      <th class="num" data-k="cc">Continued claims</th><th class="num" data-k="pay">Jobs yr/yr</th>
+      <th class="num">As of</th>
+    </tr></thead><tbody>
+    ${rows.map((s) => {
+      const ok = s.ur && s.ur.ok;
+      return `<tr class="${ok ? '' : 'bad'}" data-lat="${s.lat}" data-lon="${s.lon}">
+        <td>${s.name}</td>
+        <td class="num">${ok ? fmt(s.ur.latest.v, 1) + '%' : 'no data'}</td>
+        <td class="num ${ok ? cls(-(s.ur.chg ?? 0)) : ''}">${ok ? sign(s.ur.chg, 1) : ''}</td>
+        <td class="num">${s.initialClaims && s.initialClaims.ok ? fmt(s.initialClaims.latest.v) : '—'}</td>
+        <td class="num">${s.continuedClaims && s.continuedClaims.ok ? fmt(s.continuedClaims.latest.v) : '—'}</td>
+        <td class="num ${s.payrolls && s.payrolls.ok ? cls(s.payrolls.yoyPct) : ''}">${
+          s.payrolls && s.payrolls.ok ? sign(s.payrolls.yoyPct, 1) + '%' : '—'}</td>
+        <td class="num" style="color:var(--faint)">${ok ? s.ur.latest.d : ''}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table></div>`;
+  $('j-st').querySelectorAll('th[data-k]').forEach((th) => {
+    th.onclick = () => {
+      const k = th.dataset.k;
+      stSort = { key: k, dir: stSort.key === k ? -stSort.dir : (k === 'name' ? 1 : -1) };
+      renderStates();
+    };
+  });
+  $('j-st').querySelectorAll('tbody tr').forEach((tr) => {
+    tr.style.cursor = 'pointer';
+    tr.onclick = () => {
+      layers.jobs.addTo(map); drawLayerPanel();
+      map.flyTo([Number(tr.dataset.lat), Number(tr.dataset.lon)], 6, { duration: 0.8 });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+  });
+}
+
+function urColor(v) {
+  if (v == null) return '#3a4250';
+  const t = Math.max(0, Math.min(1, (v - 2.5) / 5));
+  const r = Math.round(63 + t * (248 - 63)), g = Math.round(185 - t * (185 - 81));
+  return `rgb(${r},${g},${Math.round(80 - t * 7)})`;
+}
+function drawJobsLayer() {
+  layers.jobs.clearLayers();
+  if (!JOB) return;
+  for (const s of JOB.states) {
+    const ok = s.ur && s.ur.ok;
+    const v = ok ? s.ur.latest.v : null;
+    L.circleMarker([s.lat, s.lon], {
+      radius: ok ? 6 + v * 1.6 : 5,
+      color: urColor(v), fillColor: urColor(v),
+      weight: ok ? 1.2 : 1, fillOpacity: ok ? 0.5 : 0.12, dashArray: ok ? null : '2,3',
+    }).bindPopup(`<b>${s.name}</b><br>
+      Unemployment: ${ok ? v + '% (' + s.ur.latest.d + ')' : '<i>no data</i>'}<br>
+      Initial claims: ${s.initialClaims && s.initialClaims.ok ? fmt(s.initialClaims.latest.v) : '—'}<br>
+      Continued claims: ${s.continuedClaims && s.continuedClaims.ok ? fmt(s.continuedClaims.latest.v) : '—'}<br>
+      Jobs yr/yr: ${s.payrolls && s.payrolls.ok ? sign(s.payrolls.yoyPct, 1) + '%' : '—'}`)
+      .addTo(layers.jobs);
+  }
+  layerCounts.jobs = JOB.states.length;
+  drawLayerPanel();
+}
+
+document.querySelectorAll('#c-jobless .tabs button').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('#c-jobless .tabs button').forEach((x) => x.classList.remove('on'));
+    b.classList.add('on');
+    for (const [k, id] of [['nat', 'j-nat'], ['st', 'j-st'], ['sec', 'j-sec']]) {
+      $(id).classList.toggle('hide', k !== b.dataset.tab);
+    }
+  };
+});
+
+// ------------------------------------------------------------ panel layout
+// Each panel owns a column span, an optional height cap, and folded/hidden
+// flags. Spans are stored as a fraction of the grid so switching between a
+// 6-, 12- or 24-column grid keeps the proportions you set.
+// id, label, and the starting box: x and w as a fraction of the canvas width,
+// y and h in pixels.
+const PANELS = [
+  ['c-map', 'Tactical map', { x: 0, y: 0, w: 0.66, h: 560 }],
+  ['c-watch', 'Weather', { x: 0.665, y: 0, w: 0.335, h: 560 }],
+  ['c-planet', 'Planet check', { x: 0, y: 572, w: 1, h: 300 }],
+  ['c-conflicts', 'Conflict watch', { x: 0, y: 884, w: 0.33, h: 430 }],
+  ['c-energy', 'Energy sector', { x: 0.335, y: 884, w: 0.33, h: 430 }],
+  ['c-climate', 'Local climate', { x: 0.67, y: 884, w: 0.33, h: 430 }],
+  ['c-markets', 'Markets', { x: 0, y: 1326, w: 0.33, h: 540 }],
+  ['c-news', 'World events', { x: 0.335, y: 1326, w: 0.33, h: 540 }],
+  ['c-marketnews', 'Market news', { x: 0.67, y: 1326, w: 0.33, h: 540 }],
+  ['c-livetv', 'Live news TV', { x: 0, y: 1878, w: 0.5, h: 560 }],
+  ['c-jobless', 'Jobless', { x: 0.505, y: 1878, w: 0.495, h: 560 }],
+];
+const LAYOUT_DEFAULTS = () => ({
+  box: Object.fromEntries(PANELS.map(([id, , b]) => [id, { ...b }])),
+  folded: {}, hidden: {}, dens: 1, snap: true, z: {},
+});
+let LAYOUT = { ...LAYOUT_DEFAULTS(), ...JSON.parse(localStorage.getItem('layout2') || '{}') };
+const saveLayout = () => localStorage.setItem('layout2', JSON.stringify(LAYOUT));
+const MIN_W = 210, MIN_H = 90;
+let topZ = 10;
+
+const canvasW = () => document.querySelector('.wrap').clientWidth - 28;   // minus padding
+
+function applyLayout() {
+  const wrap = document.querySelector('.wrap');
+  const W = canvasW();
+  document.documentElement.style.setProperty('--dens', LAYOUT.dens);
+  document.body.style.fontSize = (14 * LAYOUT.dens) + 'px';
+  let bottom = 0;
+
+  for (const [id] of PANELS) {
+    const el = $(id), b = LAYOUT.box[id];
+    if (!el || !b) continue;
+    el.classList.toggle('folded', Boolean(LAYOUT.folded[id]));
+    el.classList.toggle('hidden', Boolean(LAYOUT.hidden[id]));
+    el.style.left = Math.round(b.x * W) + 'px';
+    el.style.top = Math.round(b.y) + 'px';
+    el.style.width = Math.round(b.w * W) + 'px';
+    el.style.height = LAYOUT.folded[id] ? 'auto' : Math.round(b.h) + 'px';
+    el.style.zIndex = LAYOUT.z[id] || 1;
+    if (!LAYOUT.hidden[id]) bottom = Math.max(bottom, b.y + (LAYOUT.folded[id] ? 46 : b.h));
+  }
+  wrap.style.height = (bottom + 40) + 'px';
+  setTimeout(() => map.invalidateSize(), 60);
+  buildPanelList();
+  saveLayout();
+}
+
+// Drag the title bar to move; drag a corner or edge to resize. Snapping is to a
+// 24th of the canvas horizontally and 10px vertically - hold Alt to place freely.
+function beginDrag(id, mode, ev) {
+  ev.preventDefault();
+  const el = $(id), b = LAYOUT.box[id], W = canvasW();
+  const start = { mx: ev.clientX, my: ev.clientY, x: b.x * W, y: b.y, w: b.w * W, h: b.h };
+  LAYOUT.z[id] = ++topZ;
+  el.style.zIndex = topZ;
+  el.classList.add('moving');
+
+  const snapX = (px, free) => (free || !LAYOUT.snap ? px : Math.round(px / (W / 24)) * (W / 24));
+  const snapY = (px, free) => (free || !LAYOUT.snap ? px : Math.round(px / 10) * 10);
+
+  const onMove = (e) => {
+    const dx = e.clientX - start.mx, dy = e.clientY - start.my, free = e.altKey;
+    let { x, y, w, h } = start;
+    if (mode === 'move') { x = snapX(start.x + dx, free); y = Math.max(0, snapY(start.y + dy, free)); }
+    if (mode.includes('e')) w = snapX(start.w + dx, free);
+    if (mode.includes('s')) h = snapY(start.h + dy, free);
+    if (mode.includes('w')) { const nx = snapX(start.x + dx, free); w = start.w + (start.x - nx); x = nx; }
+    if (mode.includes('n')) { const ny = Math.max(0, snapY(start.y + dy, free)); h = start.h + (start.y - ny); y = ny; }
+    w = Math.max(MIN_W, w); h = Math.max(MIN_H, h);
+    x = Math.max(0, Math.min(x, W - MIN_W));
+    if (x + w > W) w = W - x;
+    el.style.left = Math.round(x) + 'px';
+    el.style.top = Math.round(y) + 'px';
+    el.style.width = Math.round(w) + 'px';
+    if (mode !== 'move') el.style.height = Math.round(h) + 'px';
+    LAYOUT.box[id] = { x: x / W, y, w: w / W, h };
+  };
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    el.classList.remove('moving');
+    applyLayout();
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+}
+
+function buildControls() {
+  for (const [id] of PANELS) {
+    const el = $(id);
+    if (!el || el.querySelector('.cardctl')) continue;
+
+    const ctl = document.createElement('span');
+    ctl.className = 'cardctl';
+    ctl.innerHTML = `
+      <button data-a="fold" title="fold away">⌃</button>
+      <button data-a="full" title="fill the width">⤢</button>
+      <button data-a="hide" title="hide">✕</button>`;
+    const h2 = el.querySelector('h2');
+    h2.appendChild(ctl);
+    ctl.onclick = (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      e.stopPropagation();
+      if (b.dataset.a === 'fold') LAYOUT.folded[id] = !LAYOUT.folded[id];
+      if (b.dataset.a === 'hide') LAYOUT.hidden[id] = true;
+      if (b.dataset.a === 'full') { LAYOUT.box[id].x = 0; LAYOUT.box[id].w = 1; }
+      applyLayout();
+    };
+
+    // move by the title bar, but not when the pointer is on its buttons
+    h2.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button,select,input,a')) return;
+      beginDrag(id, 'move', e);
+    });
+
+    for (const m of ['nw', 'ne', 'sw', 'se', 'n', 's', 'w', 'e']) {
+      const hd = document.createElement('div');
+      hd.className = 'rz ' + m;
+      hd.addEventListener('pointerdown', (e) => beginDrag(id, m, e));
+      el.appendChild(hd);
+    }
+  }
+}
+
+function buildPanelList() {
+  $('panelList').innerHTML = PANELS.map(([id, label]) =>
+    `<label><input type="checkbox" data-p="${id}" ${LAYOUT.hidden[id] ? '' : 'checked'}>
+      ${label}</label>`).join('');
+  $('panelList').querySelectorAll('input').forEach((cb) => {
+    cb.onchange = () => { LAYOUT.hidden[cb.dataset.p] = !cb.checked; applyLayout(); };
+  });
+  $('densSel').value = String(LAYOUT.dens);
+  $('snapCb').checked = LAYOUT.snap;
+}
+
+// Packs the visible panels left-to-right at their current widths, so a layout
+// that has drifted into a mess can be straightened without losing your sizes.
+function tidy() {
+  let x = 0, y = 0, rowH = 0;
+  for (const [id] of PANELS) {
+    if (LAYOUT.hidden[id]) continue;
+    const b = LAYOUT.box[id];
+    if (x + b.w > 1.001) { x = 0; y += rowH + 12; rowH = 0; }
+    b.x = x; b.y = y;
+    x += b.w + 0.005;
+    rowH = Math.max(rowH, b.h);
+  }
+  applyLayout();
+}
+
+$('layoutBtn').onclick = () => $('layoutPanel').classList.toggle('hide');
+$('densSel').onchange = (e) => { LAYOUT.dens = Number(e.target.value); applyLayout(); };
+$('snapCb').onchange = (e) => { LAYOUT.snap = e.target.checked; saveLayout(); };
+$('tidyBtn').onclick = tidy;
+$('layoutReset').onclick = () => { LAYOUT = LAYOUT_DEFAULTS(); applyLayout(); };
+window.addEventListener('resize', () => applyLayout());
+
+// ------------------------------------------------------------------- cycle
+async function refreshAll(fresh) {
+  nextRefresh = Date.now() + REFRESH_MS;
+  await Promise.all([
+    drawMap(fresh),
+    drawWatch(fresh).then(() => drawClimate(fresh)),
+    drawPlanet(fresh), drawConflicts(fresh), drawEnergy(fresh),
+    drawMarkets(fresh), drawKalshi(fresh), drawMarketNews(fresh),
+    drawNews(fresh), drawJobless(fresh), drawLiveTv(fresh),
+  ]);
+  if (heatMode !== 'off') drawHeat(fresh);
+}
+
+$('refreshAll').onclick = () => {
+  $('refreshAll').textContent = 'Refreshing…';
+  refreshAll(true).finally(() => ($('refreshAll').textContent = 'Refresh now'));
+};
+
+setInterval(() => {
+  const left = Math.max(0, nextRefresh - Date.now());
+  const h = Math.floor(left / 3600e3), m = Math.floor((left % 3600e3) / 60e3);
+  $('clock').textContent =
+    new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) +
+    `  ·  next refresh ${h}h ${String(m).padStart(2, '0')}m`;
+}, 1000);
+
+setInterval(() => refreshAll(true), REFRESH_MS);
+buildTuner();
+applyBase();
+applyTileFilters();
+buildControls();
+applyLayout();
+drawHeat();
+refreshAll(false);
+</script>
+</body>
+</html>
