@@ -1,0 +1,23 @@
+{
+  "name": "youtube-mcp",
+  "version": "0.1.0",
+  "description": "YouTube audience-research MCP: public video/channel/comment stats and growth velocity from the YouTube Data API v3, plus owner-only viewer demographics (age group, gender, country, device, OS) from the YouTube Analytics API over OAuth. NETWORKED asset — holds YOUTUBE_API_KEY and an OAuth refresh token; see AGENTS.md 'Networked assets'. Ledgers the 100-search-calls-per-day quota bucket and caches to disk. Labels every demographic split as logged-in viewers only, and every transcript as an unofficial source. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "youtube-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "setup:oauth": "node setup-oauth.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}

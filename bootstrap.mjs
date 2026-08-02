@@ -19,6 +19,7 @@ const PACKAGES = [
   "healthguide-mcp",
   "overseer-mcp",
   "curiosity-mcp",
+  "psychology-mcp",
   "education-mcp",
   "communication-mcp",
   "sports-mcp",
@@ -35,6 +36,11 @@ const PACKAGES = [
   "docingest-mcp",
   "ghmonitor-mcp",
   "docsearch-mcp",
+  // NETWORKED asset — see AGENTS.md "Networked assets (exceptions)". Installs and
+  // builds like any other, but stays inert until youtube-mcp/.env has credentials;
+  // every tool reports its own missing-credential state rather than throwing at
+  // startup, so bootstrap succeeding here does NOT mean youtube is configured.
+  "youtube-mcp",
 ];
 
 function run(cmd, cwd) {

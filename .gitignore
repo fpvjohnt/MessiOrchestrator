@@ -42,3 +42,13 @@ data/registry.json
 
 # Supervisor single-instance lock — a live PID, never useful to track.
 data/.supervisor.lock
+
+# Dashboard feed cache — fetched at runtime from public sources and fully
+# regenerable. 13 MB of it (an 11 MB power-plant CSV, a 1.5 MB camera list)
+# would otherwise land in a PUBLIC repo permanently, since git history keeps a
+# blob forever even after a later delete.
+dashboard/cache/
+
+# youtube-mcp runtime state: the quota ledger, view-count snapshots and HTTP
+# cache. Machine-local and recreated on first run.
+youtube-mcp/.cache/
