@@ -184,6 +184,21 @@ const semanticCases = [
   { obj: "how do real estate agents write listings with ChatGPT", excludes: ["loop"], why: "a realtor is not an AI agent" },
   { obj: "how do I design an agent loop that self-corrects", includes: ["loop"], why: "a real agent question still routes" },
 
+  // 'depression': the mood disorder and the 1930s economic event share a word,
+  // and healthguide carries the bare tag. The economic sense must not reach the
+  // health specialist — and, far more important, the emotional sense MUST, because
+  // healthguide is the only asset carrying the non-suppressible 911/988 crisis
+  // override. Both directions are pinned: a fix for either one that breaks the
+  // other is not a fix.
+  { obj: "what caused the Great Depression", excludes: ["healthguide"], why: "the 1930s, not the illness" },
+  { obj: "was the economic depression worse in Europe", excludes: ["healthguide"], why: "economic sense" },
+  { obj: "the housing market is depressed", excludes: ["healthguide"], why: "market sense of the adjective" },
+  { obj: "prices are depressed this quarter", excludes: ["healthguide"], why: "market sense of the adjective" },
+  { obj: "I think I might be depressed", includes: ["healthguide"], why: "SAFETY: must reach the crisis override" },
+  { obj: "I am having suicidal thoughts", includes: ["healthguide"], why: "SAFETY: must reach the crisis override" },
+  { obj: "I have been feeling hopeless lately", includes: ["healthguide"], why: "SAFETY: must reach the crisis override" },
+  { obj: "how do I cope with depression", includes: ["healthguide"], why: "the illness, unqualified" },
+
   // ANCHORING: description prose corroborates, never creates, an assignment.
   { obj: "how do I quantize an open model to run it locally", exactly: ["aiforge"], why: "prose-only riders dropped" },
   { obj: "what is the tallest building in the world?", includes: ["research"], why: "nothing anchored → fallback still works" },
@@ -210,7 +225,21 @@ const suggestCases = [
   // No plausible match — a confident wrong guess is worse than none, so the
   // tool list alone must carry the answer.
   { guess: "does_not_exist", tools: HOMEBUYER_TOOLS, expect: undefined, why: "nothing close" },
-  { guess: "consult", tools: ["ask_the_expert", "expert_verdict", "build_it"], expect: undefined, why: "right intent, no shared text" },
+  // This case used to assert `undefined`, with the reason "right intent, no
+  // shared text" — encoding a KNOWN LIMITATION as the expected result. The case
+  // log then showed `consult` guessed three times, most recently the day this
+  // changed, each one dead-ending. An intent-synonym layer in tool-suggest.ts
+  // now covers exactly the residue the three textual signals cannot reach, so
+  // the correct expectation is the tool the caller actually meant.
+  { guess: "consult", tools: ["ask_the_expert", "expert_verdict", "build_it"], expect: "ask_the_expert", why: "intent synonym" },
+  { guess: "career_gap_analysis", tools: ["level_up", "foundations", "build_it"], expect: "level_up", why: "intent synonym" },
+  // Guards on the new layer: it must not manufacture a match out of nothing,
+  // and it must never outrank a genuine textual near-miss.
+  { guess: "consult", tools: ["property_investigation", "affordability"], expect: undefined, why: "intent group present in guess but not in any tool" },
+  { guess: "explain", tools: ["explore", "ask_the_expert"], expect: "explore", why: "textual near-miss still beats an intent match" },
+  // Both observed in the real case log on 2026-07-26, both under the textual floor.
+  { guess: "read_body_language", tools: ["read_people", "prepare", "steelman"], expect: "read_people", why: "intent synonym — shares only generic 'read' textually" },
+  { guess: "verify", tools: ["research", "search", "fetch_page"], expect: "research", why: "intent synonym — no shared characters at all" },
 ];
 for (const t of suggestCases) {
   check(`suggestTool("${t.guess}") → ${t.expect ?? "no suggestion"} (${t.why})`, suggestTool(t.guess, t.tools) === t.expect, `got ${suggestTool(t.guess, t.tools)}`);
@@ -1077,6 +1106,21 @@ for (const [name, out] of START_HERE) {
   check("bridge just past TTL → still up", interpretBridge(healthz({ oldestIdleMin: 35 }), { sessionIdleMs: IDLE_MS }).state === UP);
   check("bridge idle check skipped without a TTL", interpretBridge(healthz({ oldestIdleMin: 9999 })).state === UP);
 
+  // The stateless bridge reports a worker pool instead of sessions. A short
+  // pool is the new "present but degrading" signal: still serving, but one
+  // death from an outage, and nothing else in the system would report it.
+  const pooled = (pool) => healthz({ stateless: true, sessions: 0, pool: { size: 2, live: 2, inFlight: 0, restarts: 0, ...pool } });
+  check("full pool → up", interpretBridge(pooled(), { sessionIdleMs: IDLE_MS }).state === UP);
+  check("full pool reason counts workers, not sessions",
+    /workers/.test(interpretBridge(pooled()).reason), interpretBridge(pooled()).reason);
+  const short = interpretBridge(pooled({ live: 1, restarts: 3 }), { sessionIdleMs: IDLE_MS });
+  check("pool down a worker → degraded", short.state === DEGRADED, `got ${short.state}`);
+  check("short-pool reason names the shortfall", /1\/2/.test(short.reason), short.reason);
+  // A bridge whose workers are all gone reports ok:false, so it must read DOWN
+  // rather than merely degraded — the pool branch never sees it.
+  check("empty pool → down",
+    interpretBridge({ reachable: true, status: 200, body: { ok: false, pool: { size: 2, live: 0 } }, error: null }).state === DOWN);
+
   // The tunnel case that motivated all of this: process alive, phone dead.
   check("tunnel with 0 edge connections → down", interpretTunnel({ reachable: true, status: 200, body: { status: 200, readyConnections: 0 }, error: null }).state === DOWN);
   check("tunnel with 4 edge connections → up", interpretTunnel({ reachable: true, status: 200, body: { status: 200, readyConnections: 4 }, error: null }).state === UP);
@@ -1741,6 +1785,45 @@ for (const [name, out] of START_HERE) {
   check("sports live_scores: degrades offline to research + BOTTOM LINE", sc.includes("BOTTOM LINE") && /research/i.test(sc));
   const cr = await neCrypto("");
   check("nestegg crypto_price: degrades offline to research + BOTTOM LINE", cr.includes("BOTTOM LINE") && /research/i.test(cr));
+}
+
+// ── Verdict graders: they must COMMIT, and must not be fooled by negation ──
+//
+// These three tools were measured at 85%/88%/82% identical output call-to-call:
+// they printed the tier rubric and handed the judgement back to the caller who
+// had just written the findings. Now they grade. Two properties are locked in
+// here because both were violated by the first implementation:
+//   1. the label must change with the evidence (otherwise it is still a rubric)
+//   2. a NEGATED mention must never count as evidence FOR — "no randomized
+//      trials" graded TIER 2 by matching the word "randomized", upgrading an
+//      association to trial evidence on a health claim.
+{
+  const { openaiVerdict } = await import("./openai-mcp/dist/verify.js");
+  const { scienceVerdict } = await import("./healthguide-mcp/dist/science.js");
+  const line = (s) => s.split("\n")[1] ?? "";
+  const verdictCases = [
+    ["science rounds DOWN on negated rct", scienceVerdict("x", "Observational only; no randomized trials identified."), /TIER 3/],
+    ["science grades systematic review top", scienceVerdict("x", "A Cochrane systematic review of multiple randomized trials found a reduction."), /TIER 1/],
+    ["science: no study at all", scienceVerdict("x", "Only testimonials and influencer claims; no study exists."), /TIER 5/],
+    ["science: empty findings not graded", scienceVerdict("x", ""), /NOT GRADED/],
+    ["openai negated docs → unverified", openaiVerdict("x", "No official docs found; could not confirm on openai.com."), /UNVERIFIED/],
+    ["openai real dated docs → verified", openaiVerdict("x", "Confirmed on platform.openai.com pricing page, updated 2026."), /VERIFIED — OFFICIAL \+ CURRENT/],
+    ["openai deprecation → updated", openaiVerdict("x", "The changelog says this parameter was deprecated and superseded."), /UPDATED/],
+    ["aiforge negated evidence → unverified", afPracticeVerdict("x", "No official documentation and no benchmark exists for this."), /UNVERIFIED/],
+    ["aiforge docs+measurement → verified", afPracticeVerdict("x", "Official documentation confirms it; benchmark shows 30% lower latency."), /VERIFIED/],
+    ["aiforge carries single-source caveat", afPracticeVerdict("x", "Official documentation confirms it. NOT cross-checked: one web index is active."), /single-source/],
+  ];
+  for (const [name, out, want] of verdictCases) {
+    check(`verdict: ${name}`, want.test(out), `got ${line(out).slice(0, 90)}`);
+  }
+  // The rubric-printer regression: two DIFFERENT findings must not produce the
+  // same headline. If they do, the tool has gone back to ignoring its input.
+  check(
+    "verdict: label actually varies with the findings",
+    line(scienceVerdict("x", "A Cochrane systematic review found a reduction.")) !==
+      line(scienceVerdict("x", "Only testimonials; no study exists.")),
+    "same headline for opposite evidence — the grader is ignoring its input again"
+  );
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────

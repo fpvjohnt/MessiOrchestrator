@@ -1,0 +1,315 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MCP Orchestrator — Architecture</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --bg:#0a0d13; --panel:#121824; --line:#1f2839; --tx:#dbe2ee; --dim:#6d7b94;
+    --amber:#f0b429; --cyan:#38bdf8; --green:#4ade80; --red:#f87171; --violet:#a78bfa;
+  }
+  html,body{ width:100%; height:100%; overflow:hidden; background:var(--bg); }
+  body{
+    font:14px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--tx); display:flex; align-items:center; justify-content:center;
+  }
+  /* Fixed 16:9 design frame, scaled to fill whatever viewport the recorder
+     gives us. Keeps every scene's layout identical across window sizes. */
+  /* Centered by absolute positioning, NOT by flex. Flex centers the untransformed
+     LAYOUT box, so any scale above 1 overflows that box and shifts the frame
+     off-centre. translate(-50%,-50%) is applied to the already-scaled visual box,
+     so the frame stays centred at any scale. */
+  .stage{
+    position:absolute; left:50%; top:50%; width:1200px; height:675px;
+    transform:translate(-50%,-50%) scale(var(--s,1));
+  }
+  .scene{
+    position:absolute; inset:0; padding:44px 56px;
+    opacity:0; transition:opacity .25s ease; pointer-events:none;
+    display:flex; flex-direction:column;
+  }
+  .scene.on{ opacity:1; }
+  .eyebrow{ color:var(--amber); letter-spacing:.22em; font-size:12px; text-transform:uppercase; margin-bottom:14px; }
+  h1{ font-size:52px; letter-spacing:-.02em; font-weight:600; line-height:1.1; }
+  h2{ font-size:30px; font-weight:600; letter-spacing:-.01em; margin-bottom:6px; }
+  .sub{ color:var(--dim); font-size:16px; margin-top:12px; max-width:820px; }
+  .stepno{ position:absolute; right:56px; top:44px; color:var(--line); font-size:64px; font-weight:700; }
+
+  /* title */
+  .stats{ display:flex; gap:52px; margin-top:44px; }
+  .stat b{ display:block; font-size:40px; color:var(--cyan); font-weight:600; }
+  .stat span{ color:var(--dim); font-size:13px; }
+
+  /* fleet grid */
+  .fleet{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; margin-top:22px; }
+  .a{
+    background:var(--panel); border:1px solid var(--line); border-radius:7px;
+    padding:9px 8px; font-size:12px; text-align:center; color:var(--dim);
+    transition:all .3s ease;
+  }
+  .a b{ display:block; color:var(--tx); font-size:12.5px; font-weight:600; }
+  .a.hit{ border-color:var(--amber); background:#1d1a10; box-shadow:0 0 0 1px var(--amber); }
+  .a.hit b{ color:var(--amber); }
+  .a.ver{ border-color:var(--cyan); background:#0e1a24; }
+  .a.ver b{ color:var(--cyan); }
+  .a.dim{ opacity:.28; }
+
+  /* flow row */
+  .flow{ display:flex; align-items:center; gap:14px; margin-top:26px; flex-wrap:wrap; }
+  .node{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:12px 16px; font-size:13px; white-space:nowrap;
+  }
+  .node.act{ border-color:var(--amber); color:var(--amber); box-shadow:0 0 22px rgba(240,180,41,.18); }
+  .node.ok{ border-color:var(--green); color:var(--green); }
+  .arw{ color:var(--line); font-size:20px; }
+
+  /* generic panel */
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-top:16px; }
+  .card h3{ font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); margin-bottom:12px; font-weight:600; }
+  .row{ display:flex; gap:16px; }
+  .row>*{ flex:1; }
+
+  /* parallel bars */
+  .bar{ display:flex; align-items:center; gap:12px; margin:9px 0; font-size:13px; }
+  .bar .nm{ width:130px; color:var(--tx); }
+  .bar .track{ flex:1; height:16px; background:#0d1420; border-radius:8px; overflow:hidden; }
+  /* display:block is REQUIRED, not cosmetic: .fill is a <span>, and width/height
+     do not apply to inline boxes. .track only works because it is a flex item
+     (flex blockifies its children); .fill is not, so without this it lays out
+     0x0 and the whole parallel-execution bar chart renders invisible. */
+  .bar .fill{ display:block; height:100%; width:0; border-radius:8px; transition:width 1.1s cubic-bezier(.4,0,.2,1); }
+  .on .bar .fill{ width:100%; }
+  .bar .ms{ width:64px; text-align:right; color:var(--dim); font-size:12px; }
+
+  .kv{ display:flex; gap:10px; font-size:13px; margin:7px 0; }
+  .kv .k{ color:var(--dim); width:132px; flex:none; }
+  .flag{ color:var(--amber); }
+  .bad{ color:var(--red); }
+  .good{ color:var(--green); }
+  .vio{ color:var(--violet); }
+  code{ background:#0d1420; border:1px solid var(--line); border-radius:4px; padding:1px 6px; color:var(--cyan); font-size:12.5px; }
+
+  .warn{ border-color:#5a3a12; background:#1b1408; }
+  .warn h3{ color:var(--amber); }
+
+  .caps{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:20px; }
+  .cap{ background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--cyan); border-radius:8px; padding:13px 15px; }
+  .cap b{ display:block; font-size:14px; margin-bottom:4px; }
+  .cap span{ color:var(--dim); font-size:12.5px; line-height:1.45; }
+  .foot{ margin-top:auto; color:var(--line); font-size:12px; letter-spacing:.1em; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- 0 TITLE -->
+  <section class="scene" id="s0">
+    <div class="eyebrow">mcp.johntapia.com</div>
+    <h1>One front door.<br>27 specialists behind it.</h1>
+    <div class="sub">A private MCP orchestrator that routes any question to the right expert, runs them in parallel, cross-checks the result, and logs the whole thing as a case.</div>
+    <div class="stats">
+      <div class="stat"><b>27</b><span>specialist assets</span></div>
+      <div class="stat"><b>107</b><span>cases logged</span></div>
+      <div class="stat"><b>333</b><span>asset calls</span></div>
+      <div class="stat"><b>2,786</b><span>regression checks</span></div>
+    </div>
+    <div class="foot">ARCHITECTURE &amp; CAPABILITIES</div>
+  </section>
+
+  <!-- 1 FLEET -->
+  <section class="scene" id="s1">
+    <div class="stepno">01</div>
+    <div class="eyebrow">the fleet</div>
+    <h2>Every domain is its own MCP server</h2>
+    <div class="sub" style="font-size:14px">Each asset is a standalone, deterministic, offline server. No API keys, no network — anything live routes through <code>research</code>.</div>
+    <div class="fleet" id="fleet"></div>
+    <div class="foot">STDIO · DETERMINISTIC · INDEPENDENTLY BUILDABLE</div>
+  </section>
+
+  <!-- 2 ROUTING -->
+  <section class="scene" id="s2">
+    <div class="stepno">02</div>
+    <div class="eyebrow">open_case</div>
+    <h2>Routing by tag overlap, not by guessing</h2>
+    <div class="card" style="margin-top:18px">
+      <h3>objective</h3>
+      <div style="font-size:15px;color:var(--tx)">"Compare two condo purchase options in Murrieta CA — seller credit toward a rate buydown vs. a motivated seller at $400,000. Need the mortgage math."</div>
+    </div>
+    <div class="fleet" id="fleet2" style="margin-top:18px"></div>
+    <div class="flow">
+      <div class="node act">homebuyer <span style="color:var(--dim)">28 tags</span></div>
+      <div class="node act">nestegg <span style="color:var(--dim)">36 tags</span></div>
+      <div class="node ver" style="border-color:var(--cyan);color:var(--cyan)">+ research <span style="color:var(--dim)">verifier rides along</span></div>
+    </div>
+    <div class="foot">ROUTER READS data/registry.json · GOLDEN 100% PRIMARY HIT</div>
+  </section>
+
+  <!-- 3 PARALLEL -->
+  <section class="scene" id="s3">
+    <div class="stepno">03</div>
+    <div class="eyebrow">task_assets</div>
+    <h2>All specialists run at once</h2>
+    <div class="sub" style="font-size:14px">One batched call instead of N sequential round-trips. The verifier runs alongside the specialists, not after them.</div>
+    <div class="card">
+      <div class="bar"><span class="nm">homebuyer</span><span class="track"><span class="fill" style="background:var(--amber)"></span></span><span class="ms">1.2s</span></div>
+      <div class="bar"><span class="nm">nestegg</span><span class="track"><span class="fill" style="background:var(--amber);transition-delay:.05s"></span></span><span class="ms">0.9s</span></div>
+      <div class="bar"><span class="nm">research</span><span class="track"><span class="fill" style="background:var(--cyan);transition-delay:.1s"></span></span><span class="ms">3.4s</span></div>
+      <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+      <div class="bar"><span class="nm" style="color:var(--green)">wall clock</span><span class="track"><span class="fill" style="background:var(--green)"></span></span><span class="ms good">3.4s</span></div>
+      <div style="color:var(--dim);font-size:12.5px">sequential would have been 5.5s — the slowest call, not the sum</div>
+    </div>
+    <div class="foot">2–8 ASSETS PER BATCH · ONE SLOW CALL NEVER BLOCKS THE OTHERS</div>
+  </section>
+
+  <!-- 4 VERIFY LOOP -->
+  <section class="scene" id="s4">
+    <div class="stepno">04</div>
+    <div class="eyebrow">the verify loop</div>
+    <h2>Nothing fast-moving is answered from memory</h2>
+    <div class="flow">
+      <div class="node act">check_practice</div><span class="arw">→</span>
+      <div class="node" style="border-color:var(--cyan);color:var(--cyan)">research fetches sources</div><span class="arw">→</span>
+      <div class="node ok">practice_verdict</div>
+    </div>
+    <div class="card">
+      <h3>the verdict commits — it does not hand the judgement back</h3>
+      <div class="kv"><span class="k">BOTTOM LINE</span><span class="good">VERIFIED — documented + measured</span></div>
+      <div class="kv"><span class="k">graded on</span><span>primary docs ✓ · measurement ✓ · no deprecation · corroborated</span></div>
+      <div style="border-top:1px solid var(--line);margin:12px 0"></div>
+      <div class="kv"><span class="k">BOTTOM LINE</span><span class="flag">UPDATED — the assumed API is deprecated</span></div>
+      <div class="kv"><span class="k">BOTTOM LINE</span><span class="bad">UNVERIFIED — no docs, no measurement</span></div>
+    </div>
+    <div class="foot">DETERMINISTIC GRADER · NEGATION-GUARDED · REGRESSION-LOCKED</div>
+  </section>
+
+  <!-- 5 SYNTHESIS -->
+  <section class="scene" id="s5">
+    <div class="stepno">05</div>
+    <div class="eyebrow">synthesize_case</div>
+    <h2>Correlate, don't concatenate</h2>
+    <div class="row">
+      <div class="card">
+        <h3>merged key points</h3>
+        <div style="font-size:13px;color:var(--dim);line-height:1.7">
+          • homebuyer — raising price to fund the credit costs more than it saves past year 6<br>
+          • nestegg — the buydown breakeven lands at 71 months<br>
+          • research — 3 sources, one index only
+        </div>
+      </div>
+      <div class="card warn">
+        <h3>flags</h3>
+        <div style="font-size:13px;line-height:1.7">
+          <span class="flag">▲ UNCORROBORATED</span> <span style="color:var(--dim)">— single index; agreement is not independent confirmation</span><br>
+          <span class="flag">▲ VERIFY LOOP LEFT OPEN</span> <span style="color:var(--dim)">— check_ ran, no verdict did</span>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="padding:13px 20px">
+      <div style="font-size:13px;color:var(--dim)">Where two headlines <b style="color:var(--tx)">disagree</b>, the disagreement gets reported — not averaged away, and not resolved by picking whichever sounded more confident.</div>
+    </div>
+    <div class="foot">FLAGS ARE PROMOTED FROM ASSET OUTPUT, NOT INVENTED</div>
+  </section>
+
+  <!-- 6 HONESTY -->
+  <section class="scene" id="s6">
+    <div class="stepno">06</div>
+    <div class="eyebrow">close_case</div>
+    <h2>The metric is not allowed to flatter itself</h2>
+    <div class="card warn">
+      <h3>⚠ degenerate labels — read this before the numbers</h3>
+      <div style="font-size:13.5px;line-height:1.75">
+        <span class="flag">62 labeled cases, ZERO ever marked 'unresolved' or 'misrouted'.</span><br>
+        <span style="color:var(--dim)">A label that has never once said "no" cannot say "yes" either — the 100% below measures nothing. Treat routing quality as UNMEASURED, not as good.</span><br>
+        <span style="color:var(--dim)">Root cause: whoever runs the case also closes it, so the metric grades its own work.</span>
+      </div>
+    </div>
+    <div class="sub" style="font-size:14px;margin-top:18px">The same shape was found in three places — outcome labels, the verdict tools, and the synthesis all-clear. The tell is identical every time: <b style="color:var(--tx)">a number that has never once been bad.</b></div>
+    <div class="foot">A SATURATED GRADER AND A WORKING ONE PRODUCE IDENTICAL OUTPUT</div>
+  </section>
+
+  <!-- 7 OVERSEER -->
+  <section class="scene" id="s7">
+    <div class="stepno">07</div>
+    <div class="eyebrow">overseer</div>
+    <h2>The system watches itself</h2>
+    <div class="row" style="margin-top:8px">
+      <div class="card"><h3>health_check</h3><div style="font-size:26px" class="good">27/27</div><div style="color:var(--dim);font-size:12.5px">reachable · version · stale-build detection</div></div>
+      <div class="card"><h3>detect_drift</h3><div style="font-size:26px" class="flag">4</div><div style="color:var(--dim);font-size:12.5px">same question, different routing over time</div></div>
+      <div class="card"><h3>export_failures</h3><div style="font-size:26px" class="vio">45</div><div style="color:var(--dim);font-size:12.5px">labeled rows · 34 actionable</div></div>
+    </div>
+    <div class="card">
+      <h3>the one dataset that cannot flatter the system that made it</h3>
+      <div style="font-size:13px;color:var(--dim);line-height:1.7">
+        <span style="color:var(--tx)">too_long</span> 12 &nbsp;·&nbsp; <span style="color:var(--tx)">unknown_tool</span> 10 &nbsp;·&nbsp; <span style="color:var(--tx)">missing_required_arg</span> 8 &nbsp;·&nbsp; <span style="color:var(--tx)">http_fetch_failed</span> 9 &nbsp;·&nbsp; <span style="color:var(--tx)">wrong_type</span> 1<br>
+        Labeled by the runtime, not by a model — a schema either rejected the call or it did not.
+      </div>
+    </div>
+    <div class="foot">replay_case · audit_report · analyze_errors · latency_report · outcome_report</div>
+  </section>
+
+  <!-- 8 CAPABILITIES -->
+  <section class="scene" id="s8">
+    <div class="stepno">08</div>
+    <div class="eyebrow">what's possible</div>
+    <h2>One layer, every domain</h2>
+    <div class="caps">
+      <div class="cap"><b>Buy a house</b><span>mortgage math, seller credits, buydown breakeven, CA contracts</span></div>
+      <div class="cap"><b>Read a contract</b><span>CA + federal legal information, know-your-rights, plain language</span></div>
+      <div class="cap"><b>Plan retirement</b><span>every vehicle explained honestly, SEC filings as primary source</span></div>
+      <div class="cap"><b>Navigate healthcare</b><span>evidence tiers, emergency override, misinformation red flags</span></div>
+      <div class="cap"><b>Land a job</b><span>posting match, career discovery, company vetting</span></div>
+      <div class="cap"><b>Ship AI systems</b><span>agent loops, prompts, APIs, git, OpenAI, HuggingFace</span></div>
+      <div class="cap"><b>Live market prices</b><span>Kalshi event contracts, breakeven after fees</span></div>
+      <div class="cap"><b>Speak &amp; be heard</b><span>ElevenLabs voice, transcription, 27 audio tools</span></div>
+      <div class="cap"><b>Learn anything</b><span>science, languages, religions, governments, sports, education</span></div>
+    </div>
+    <div class="foot" style="color:var(--dim)">…and 'research' catches everything else — so open_case is ALWAYS a valid first call.</div>
+  </section>
+
+</div>
+<script>
+  const ASSETS = [
+    ["research","fallback"],["homebuyer","28"],["nestegg","36"],["lawguide","37"],["jobhunt","24"],["polymath","96"],["healthguide","47"],
+    ["curiosity","57"],["education","44"],["communication","35"],["sports","31"],["government","31"],["linguistics","33"],["faiths","45"],
+    ["loop","36"],["openai","28"],["aiforge","34"],["gitforge","23"],["promptcraft","18"],["apiforge","25"],["kalshi","18"],
+    ["elevenlabs","11"],["docingest","16"],["ghmonitor","10"],["docsearch","10"],["browser","10"],["overseer","13"]
+  ];
+  function paint(el, hits, verifier){
+    el.innerHTML = ASSETS.map(([n,t])=>{
+      let c = "a";
+      if (hits) {
+        if (hits.includes(n)) c += " hit";
+        else if (verifier && n === verifier) c += " ver";
+        else c += " dim";
+      }
+      return `<div class="${c}"><b>${n}</b>${t}</div>`;
+    }).join("");
+  }
+  paint(document.getElementById("fleet"));
+  paint(document.getElementById("fleet2"), ["homebuyer","nestegg"], "research");
+
+  function fit(){
+    const s = Math.min(window.innerWidth / 1200, window.innerHeight / 675);
+    // setProperty ignores a raw number — custom properties must be strings.
+    document.querySelector(".stage").style.setProperty("--s", String(s));
+  }
+  fit(); window.addEventListener("resize", fit);
+
+  const N = 9;
+  let cur = -1;
+  window.__scene = (n) => {
+    if (cur >= 0) document.getElementById("s"+cur).classList.remove("on");
+    cur = ((n % N) + N) % N;
+    document.getElementById("s"+cur).classList.add("on");
+    return cur;
+  };
+  window.__scene(0);
+  // auto-advance for live viewing; frame capture calls __scene() directly
+  if (!location.hash.includes("manual")) {
+    setInterval(() => window.__scene(cur + 1), 2600);
+  }
+</script>
+</body>
+</html>

@@ -64,12 +64,55 @@ export function nameSimilarity(guess: string, real: string): number {
 // answer on its own, and a confidently wrong suggestion is worse than none.
 const SUGGEST_FLOOR = 0.5;
 
+// INTENT SYNONYMS — the failure mode spelling alone cannot reach.
+//
+// The three signals above are all TEXTUAL, so they only catch a guess that
+// looks like the answer. Measured against export_failures, the residue is
+// guesses that are semantically right and textually unrelated: `consult` for
+// `ask_the_expert` shares not one character, and scores 0.0 on all three.
+// This file's own header has named that exact case since it was written, and
+// it still went unsuggested three times — most recently today.
+//
+// Each group is a set of interchangeable words. A guess and a real tool that
+// land in the SAME group are near-certainly the same intent. Grounded strictly
+// in the guesses that actually occurred (overseer's export_failures,
+// failure_class="unknown_tool"); do not add speculative pairs, and add a group
+// only after a real call has missed because it was absent.
+const INTENT_GROUPS: string[][] = [
+  ["consult", "ask", "advice", "advise", "expert", "question"],
+  ["career", "gap", "level", "ladder", "advance", "progression"],
+  ["misinformation", "misleading", "myth", "red", "flag", "flags"],
+  ["list", "tools", "index", "start", "help", "here"],
+  ["lookup", "look", "find", "search", "investigation", "investigate", "property"],
+  // communication.read_body_language -> read_people. Observed 2026-07-26: the
+  // guess shares only the generic token "read" (0.33, under the floor), so
+  // spelling alone could not reach it.
+  ["read", "people", "body", "language", "nonverbal", "bodylanguage"],
+  // research.verify -> research. Observed 2026-07-26. Also lets a bare "verify"
+  // reach an asset's *_verdict half, which is the step callers skip most.
+  ["verify", "verdict", "research", "corroborate", "confirm", "factcheck"],
+];
+
+/** 0.6 when guess and real share an intent group — above the floor, below a real textual match. */
+function intentSimilarity(guess: string, real: string): number {
+  const g = tokens(guess);
+  const r = tokens(real);
+  for (const group of INTENT_GROUPS) {
+    const gHit = [...g].some((t) => group.includes(t));
+    const rHit = [...r].some((t) => group.includes(t));
+    if (gHit && rHit) return 0.6;
+  }
+  return 0;
+}
+
 /** The closest real tool name to a guess, or undefined when nothing is close. */
 export function suggestTool(guess: string, available: string[]): string | undefined {
   let best: string | undefined;
   let bestScore = 0;
   for (const real of available) {
-    const score = nameSimilarity(guess, real);
+    // Textual match wins outright when present; intent only fills the gap it
+    // leaves, so a spelling near-miss is never overridden by a synonym.
+    const score = Math.max(nameSimilarity(guess, real), intentSimilarity(guess, real));
     // Strictly greater keeps the FIRST of equally-close names, so the result
     // is stable against registry ordering rather than silently flipping.
     if (score > bestScore) {

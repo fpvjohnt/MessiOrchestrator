@@ -19,9 +19,17 @@ installed as a Windows service.
 | **orchestrator** | one stdio process per consumer; the actual MCP server | spawned on demand |
 
 The orchestrator is never started directly. Claude Desktop spawns one as a
-child; the bridge spawns one per phone session and reaps it after 30 idle
-minutes. Both write `data/cases.json`, which is why the cross-process lock in
-`src/file-lock.ts` exists.
+child; the bridge keeps a fixed pool of them warm (`MCP_BRIDGE_WORKERS`, default
+2) and routes each request to whichever is least busy. All of them write
+`data/cases.json`, which is why the cross-process lock in `src/file-lock.ts`
+exists — and why load-balancing across workers is safe in the first place.
+
+The bridge is **stateless**: `/mcp` takes a POST carrying one JSON-RPC message
+and answers it in the same response. No session ids, no SSE stream, nothing
+retained between requests. GET and DELETE return 405. That is what removed the
+idle reaper, the session cap and the handshake-grace timer — three mechanisms
+whose only job was to bound processes that client behaviour was allowed to
+create.
 
 ### The logon chain
 
@@ -55,7 +63,7 @@ bridge that is healthy, a supervisor that agrees, and a phone that gets nothing.
 ## Is it healthy?
 
 ```sh
-curl http://127.0.0.1:8787/healthz          # fast: {"ok":true,"sessions":1,"oldestIdleMin":8,...}
+curl http://127.0.0.1:8787/healthz          # fast: {"ok":true,"stateless":true,"pool":{"size":2,"live":2,...}}
 curl "http://127.0.0.1:8787/healthz?deep=1"  # deep: spawns an orchestrator, confirms it SERVES
 curl http://127.0.0.1:20241/ready            # {"status":200,"readyConnections":4}
 npm run health                               # every asset: up/down, tool count, build time
@@ -73,9 +81,11 @@ Three numbers matter:
 - **`readyConnections`** — live connections to the Cloudflare edge. **Zero means
   the phone cannot reach anything**, even though `cloudflared.exe` is running.
   This is the failure that every process-existence check reports as healthy.
-- **`oldestIdleMin`** — if it climbs past 30, the session reaper has stopped and
-  sessions are accumulating. The supervisor alerts on this as *degraded* and
-  deliberately does not restart: the bridge is still serving.
+- **`pool.live` vs `pool.size`** — workers warm out of workers configured. Short
+  means one died and is being respawned; the survivors keep serving, so the
+  supervisor calls this *degraded* and deliberately does not restart. `live: 0`
+  fails the health check outright and reads as DOWN. `pool.restarts` climbing
+  steadily means a worker is crash-looping.
 - **`uptime`** — a value that keeps resetting means something is crash-looping.
 
 ---
@@ -134,9 +144,9 @@ taskkill /F /IM cloudflared.exe
 cmd /c "bridge\start-all.cmd"
 ```
 
-Kill with `/T`. Each bridge session spawns an orchestrator, which spawns its
-asset servers; killing only the parent orphans the tree. That leak once put 37
-node processes and 2.46 GB on this box.
+Kill with `/T`. The bridge holds a pool of orchestrators, each of which spawns
+its asset servers; killing only the parent orphans the tree. That leak once put
+37 node processes and 2.46 GB on this box.
 
 > **`taskkill /T` can exit non-zero even when it worked.** It reports on every
 > process in the tree, and a descendant it cannot touch ("The process cannot
@@ -257,8 +267,9 @@ gates; PLAYBOOK.md §4 covers tag hygiene.
 
 Desktop spawns its orchestrator once, at startup, and that child keeps running
 the code it loaded then. **After any change under `src/`, Desktop keeps using
-the old build until it is restarted** — the bridge does not, because it spawns
-a fresh orchestrator per session.
+the old build until it is restarted** — and so does the bridge, because its
+pool workers are spawned once at bridge startup. Restart the bridge after any
+change under `src/`.
 
 This matters most for `src/file-lock.ts`: a Desktop still running an older
 build writes `cases.json` under the older locking rules, alongside processes

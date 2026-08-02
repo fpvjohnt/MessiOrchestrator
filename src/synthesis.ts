@@ -152,8 +152,65 @@ export function synthesizeCase(c: Case): string {
   // single case that never got this warning — precisely when the one asset that
   // can cite sources found none, which is when the caller most needs telling.
   if (!sources.size) flags.push(`No sources cited — nothing here was verified against an external source.`);
-  out.push(``, `FLAGS:`, ...(flags.length ? flags.map((f) => `  • ${f}`) : ["  • none — multiple assets contributed and calls succeeded."]));
 
-  out.push(``, `This is a structured digest for writing ONE merged answer — check the headlines for agreement/conflict before combining them.`);
+  // --- Honesty signals the ASSETS already emit, which used to die in the body text ---
+  //
+  // Every one of these was already being printed by an asset and then dropped on
+  // the floor, because FLAGS only ever described the PLUMBING (did calls run, did
+  // enough assets answer) and never the CONFIDENCE. The research asset would say
+  // "NOT cross-checked: one web index is active" — the single most important
+  // reliability caveat this system produces — and the digest right below it would
+  // report "FLAGS: none". Promote them.
+  const allText = c.log.filter((e) => !isFailed(e)).map((e) => resultText(e)).join("\n");
+
+  if (/NOT cross-checked|one web index|found by 1 provider|single provider/i.test(allText)) {
+    flags.push(
+      `UNCORROBORATED — an asset reported its findings came from a single index/provider. ` +
+        `Agreement between those sources is not independent confirmation. Say so in the answer.`
+    );
+  }
+  if (/\bUNVERIFIED\b|could not confirm|couldn't confirm/i.test(allText)) {
+    flags.push(`An asset graded part of this UNVERIFIED — carry that label through; do not launder it into a confident claim.`);
+  }
+
+  // A verify loop that was OPENED but never CLOSED. check_* tools exist precisely
+  // to refuse answering from stale memory; if the matching *_verdict never ran,
+  // the caller took the raw sources and graded them itself — which is the exact
+  // self-grading the verdict step was built to prevent.
+  const called = new Set(c.log.map((e) => e.tool));
+  const openLoops = [...called].filter(
+    (t) => /^check_/.test(t) && ![...called].some((v) => /_verdict$/.test(v) || v === "practice_verdict")
+  );
+  if (openLoops.length) {
+    flags.push(
+      `VERIFY LOOP LEFT OPEN — ${openLoops.join(", ")} ran but no matching *_verdict did. ` +
+        `The grading step was skipped, so nothing here is actually graded.`
+    );
+  }
+
+  out.push(``, `FLAGS:`);
+  if (flags.length) {
+    out.push(...flags.map((f) => `  • ${f}`));
+  } else {
+    // NOT "none — everything succeeded". These checks only ever inspected the
+    // plumbing. Reporting a clean bill of health the system never examined is
+    // how a digest flatters itself; an absence of detected problems is not
+    // evidence of correctness, and it must not read like it is.
+    out.push(
+      `  • No STRUCTURAL flags raised.`,
+      `    Scope of that check: call errors, asset count, source count, self-declared`,
+      `    corroboration caveats, and unclosed verify loops. It does NOT check whether`,
+      `    the answer is correct, current, or complete. Absence of flags is not a verdict.`
+    );
+  }
+
+  out.push(
+    ``,
+    `This is a structured digest for writing ONE merged answer.`,
+    `Before combining: where two headlines DISAGREE, report the disagreement — do not average it`,
+    `away or silently pick the more confident one. Where a flag above applies, it belongs in the`,
+    `answer, not just in this digest. Answer the question that was asked; do not pad the response`,
+    `with caveats the evidence does not support, and do not withhold a conclusion the evidence does.`
+  );
   return out.join("\n");
 }

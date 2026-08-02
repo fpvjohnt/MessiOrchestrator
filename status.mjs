@@ -93,7 +93,11 @@ const edge = tunnel?.readyConnections ?? 0;
 const backupStale = backupAge === null || backupAge > 26; // daily job + margin
 
 console.log(`\nMCP ORCHESTRATOR STATUS`);
-console.log(`  ${ok(serving)}bridge     :${BRIDGE_PORT}  ${health ? `serving=${health.serving ?? health.ok}, sessions=${health.sessions ?? "?"}, uptime=${Math.round((health.uptime ?? 0) / 60)}m` : "NO RESPONSE"}`);
+// The stateless bridge reports a worker pool; older builds reported sessions.
+const load = health?.pool
+  ? `workers=${health.pool.live}/${health.pool.size}, inFlight=${health.pool.inFlight ?? 0}`
+  : `sessions=${health?.sessions ?? "?"}`;
+console.log(`  ${ok(serving)}bridge     :${BRIDGE_PORT}  ${health ? `serving=${health.serving ?? health.ok}, ${load}, uptime=${Math.round((health.uptime ?? 0) / 60)}m` : "NO RESPONSE"}`);
 console.log(`  ${ok(edge > 0)}tunnel     metrics :${METRICS_PORT}  readyConnections=${edge}`);
 console.log(`  ${ok(lockAlive)}supervisor lock pid=${lockPid ?? "none"} ${lockAlive ? "(alive)" : "(NOT running)"}`);
 console.log(`  ${ok(!backupStale)}backup     newest=${backupAge === null ? "NONE" : backupAge.toFixed(1) + "h ago"}  (task LastResult=${backupRes ?? "?"})`);
