@@ -33,6 +33,29 @@ const CONCEPTS: Record<string, string[]> = {
   crash: ["freeze", "freezing", "frozen", "hang", "hanging", "lockup", "unresponsive"],
   // healthguide 'anxiety'
   anxiety: ["anxious", "stressed", "overwhelmed", "panic"],
+  // healthguide 'depression' — the adjective was the gap. healthguide tags the
+  // NOUN, the router does no stemming, and nobody says "I have depression"
+  // first; they say "I think I might be depressed". That phrasing scored 0 on
+  // every asset and fell through to the research fallback — i.e. the one asset
+  // carrying a non-suppressible 911/988 override never saw it. Found by the
+  // psychology boundary test, which is exactly what boundary tests are for.
+  depression: ["depressed", "despondent", "hopeless"],
+  // healthguide 'crisis' — same shape, higher stakes. These must never be a
+  // near-miss; the crisis override runs before any other healthguide tool.
+  crisis: ["suicidal", "suicide", "selfharm"],
+  // healthguide 'symptom' — the SAME bug as `depression` above, found the same
+  // way (a boundary probe written while adding an unrelated asset). healthguide
+  // tags the abstract noun `symptom`; nobody types it. They name the symptom:
+  // "is my cough viral or bacterial" scored 0 on healthguide and fell through to
+  // the research fallback, so the asset carrying the 911/988 override never saw a
+  // symptom question. Only unambiguous body-symptom words go here.
+  //
+  // DELIBERATELY EXCLUDED, and this is the whole reason to be careful: `viral`
+  // and `bacterial` are the words the QUERY used, but mapping `viral` to a health
+  // concept would route "how do I make a viral video" to a symptom checker. The
+  // youtube asset leaves `viral` untagged for the mirror-image reason. Neither
+  // side gets it; the specific symptom noun carries the meaning instead.
+  symptom: ["cough", "fever", "nausea", "rash", "wheezing", "congestion", "dizziness"],
   // nestegg 'crypto'
   crypto: ["coin", "bitcoin"],
   // polymath 'sql' — "turn my database into a report". Unambiguously technical,
@@ -62,6 +85,35 @@ const CONCEPTS: Record<string, string[]> = {
 // grouped by the asset it feeds so an operator can see, per asset, what natural
 // phrasing the tags themselves do not cover.
 const PHRASES: Record<string, string> = {
+  // → psychology. "attachment" alone is docingest's (email/file attachments)
+  // and it OUTSCORED psychology 7-5 on an attachment-theory question when the
+  // bare tag was tried. Measured, then dropped — the phrase carries the meaning
+  // the single word cannot, which is exactly what this layer is for.
+  "attachment theory": "developmental",
+  "attachment style": "developmental",
+  "attachment styles": "developmental",
+
+  // → nestegg. A genuine pre-existing collision, and a good example of why the
+  // single carrying word is the wrong lever: `compound` is a CURIOSITY tag (a
+  // chemical compound), so "what is the compound growth on 500 dollars a month"
+  // routed to the science explainer. nestegg tags `compounding`,
+  // `compoundinterest` and `compounded` — every form EXCEPT the bare adjective
+  // people actually type. Mapping `compound -> compounding` in CONCEPTS would
+  // drag nestegg into every chemistry question, so the phrase carries it.
+  "compound growth": "compounding",
+  "compound interest": "compoundinterest",
+  "compound return": "compounding",
+  "compound returns": "compounding",
+
+  // → jobhunt. jobhunt tags `employment`/`hire`/`promotion` but neither
+  // `employee` nor `engagement`. Bare `engagement` is unclaimed and must stay
+  // that way: it is simultaneously an engagement ring, an employee-survey metric
+  // and a YouTube engagement rate, so youtube claims `engagementrate` and this
+  // phrase carries the workplace sense.
+  "employee engagement": "employment",
+  "employee morale": "employment",
+  "team morale": "employment",
+
   // → lawguide. A tenant dispute is described by the person, never by the tag:
   // nobody types "landlord" when they mean the guy who runs their building.
   "apartment manager": "landlord",
@@ -229,6 +281,55 @@ const IDIOMS: Record<string, { canon?: string; consume: string[] }> = {
   // the bare "trading at": that was measured to collide, pulling kalshi onto
   // stock questions ("stocks trading at a discount"). Keep the narrow bigram.
   "contract trading": { canon: "eventcontract", consume: ["contract"] },
+  // The 1930s economic event and the mood disorder are the same word, and
+  // healthguide carries the bare tag `depression` — so "what caused the Great
+  // Depression" routed to the health specialist. Measured on the build BEFORE
+  // the depression/crisis synonyms landed, so this is an old collision those
+  // synonyms merely made visible, not one they introduced.
+  //
+  // Consume-only, no canon. There is no `history` or `economics` tag to hand it
+  // to, and inventing one would be a new tag in one domain's sense — the exact
+  // move that keeps colliding (see overseer/'assets'). Dropping the token lets
+  // the query fall to the research/education path it should have taken anyway.
+  //
+  // Deliberately narrow. The emotional sense is almost never qualified like
+  // this ("I'm depressed", "feeling hopeless"), while the economic sense almost
+  // always is — which is what makes the qualifier a safe disambiguator. Do NOT
+  // extend this to the bare word: healthguide's crisis override is reached
+  // through it, and suppressing that is a safety regression, not a routing one.
+  "great depression": { consume: ["depression"] },
+  "economic depression": { consume: ["depression"] },
+  "depression era": { consume: ["depression"] },
+  // The market/economy sense of the ADJECTIVE, which reaches the same tag via
+  // the `depressed` surface form. nestegg already wins these on its own tags;
+  // this only stops healthguide riding along as a secondary.
+  //
+  // consume MUST list the canon as well as the surface form. expandConcepts
+  // maps depressed -> depression BEFORE idioms run, so dropping only
+  // "depressed" leaves "depression" in the set and healthguide still scores.
+  // (Keys are stemmed, but stem() only folds words LONGER than 3 chars, so
+  // "is" and "are" stay as they are — unlike "this" -> "thi" above.)
+  // A video CALL is a meeting, not a YouTube upload. youtube claims the bare
+  // `video`/`videos` tags because they carry real weight ("how many views does
+  // this video have"), but the conferencing sense shares the word exactly.
+  //
+  // Found by probe.mjs, NOT by the golden set — golden is self-authored and never
+  // thought to ask about a standup. This is the out-of-set collision gate earning
+  // its place: the tag looked clean across 154 golden entries and collided on the
+  // first neighbouring-domain phrasing anyone wrote down.
+  //
+  // Consume-only, no canon: there is no meetings asset to hand it to, and
+  // inventing a tag in one domain's sense is the move that keeps colliding.
+  // Dropping the token lets the query fall through to the research/polymath path
+  // it should have taken anyway.
+  "video call": { consume: ["video"] },
+  "video conference": { consume: ["video"] },
+  "video meeting": { consume: ["video"] },
+  "video chat": { consume: ["video"] },
+  "market is depressed": { consume: ["depressed", "depression"] },
+  "economy is depressed": { consume: ["depressed", "depression"] },
+  "price are depressed": { consume: ["depressed", "depression"] }, // "prices are depressed"
+  "share are depressed": { consume: ["depressed", "depression"] },
   // → docsearch, and CONSUME "index" so nestegg's index-fund tag stops stealing
   // "index this pdf so I can search it". Indexing a document for search is not
   // an index fund. NOTE: keys are matched against the STEMMED token stream, so

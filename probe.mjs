@@ -23,6 +23,32 @@ const registry = JSON.parse(await readFile(new URL("./data/registry.json", impor
 
 // { q, want?, mustNot? } — want must be assigned; mustNot must NOT be assigned.
 const PROBES = [
+  // ── psychology probes ──────────────────────────────────────────────────────
+  // Every word below is one psychology WANTS but another asset already owns in
+  // a different sense. The bare tag was either never claimed or claimed and
+  // measured out; these lock that decision in so a later "just add the tag"
+  // shows up as a failure instead of a silent misroute.
+  //
+  // SAFETY-CRITICAL: personal mental health must never reach the field
+  // explainer. healthguide runs a non-suppressible 911/988 override first.
+  { q: "I think I might be depressed and I don't know what to do", want: "healthguide", mustNot: "psychology" },
+  { q: "I feel anxious all the time and it is affecting my work", want: "healthguide", mustNot: "psychology" },
+  { q: "how do I find a therapist my insurance covers", want: "healthguide", mustNot: "psychology" },
+  // the same subjects asked ABOUT THE FIELD stay with psychology
+  { q: "what does the research say about how CBT works", want: "psychology" },
+  { q: "explain classical and operant conditioning", want: "psychology" },
+  // 'attention' is aiforge's (attention mechanism), 'memory' is loop's (agent memory)
+  { q: "how does the attention mechanism work in a transformer", want: "aiforge", mustNot: "psychology" },
+  { q: "how should I design memory for my AI agent", want: "loop", mustNot: "psychology" },
+  // body language: communication owns the PRACTICE, psychology owns the SCIENCE
+  { q: "how do I read body language in a negotiation", want: "communication", mustNot: "psychology" },
+  { q: "how do I make my presentation more persuasive", want: "communication", mustNot: "psychology" },
+  { q: "what is kinesics and how is it studied", want: "psychology", mustNot: "communication" },
+  // studying the SUBJECT is education, not the field asset
+  { q: "how should I study for my psychology exam", want: "education" },
+  // curiosity's minds_science is BIOGRAPHY of scientists, not cognition
+  { q: "what did Einstein actually discover", want: "curiosity", mustNot: "psychology" },
+
   // 'contract': kalshi event contract vs lawguide legal contract
   { q: "is a contract trading at 90 cents nearly free money", want: "kalshi", mustNot: "lawguide" },
   { q: "how do I get out of a contract early", want: "lawguide", mustNot: "kalshi" },
@@ -74,6 +100,49 @@ const PROBES = [
   { q: "browse this website and fill out the form for me", want: "browser" },
   { q: "automate the browser to click through the checkout", want: "browser" },
   { q: "take a screenshot of this webpage", want: "browser" },
+
+  // ── youtube probes ─────────────────────────────────────────────────────────
+  // youtube's natural vocabulary is almost entirely spoken for. Every mustNot
+  // below is a word this asset WANTED and did not claim; every one was checked
+  // against the registry tag->owner map before shipping rather than after.
+  //
+  // SAFETY-CRITICAL: "viral" is the single most tempting tag for a video-metrics
+  // asset and the most dangerous. A symptom question must reach healthguide,
+  // which runs the non-suppressible 911/988 override. This probe is the reason
+  // `viral` is untagged on youtube AND why `symptom` gained the specific symptom
+  // nouns in src/synonyms.ts — before that fix this query fell through to the
+  // research fallback and healthguide never saw it at all.
+  { q: "is my cough viral or bacterial", want: "healthguide", mustNot: "youtube" },
+  { q: "how long does a viral infection with a fever last", want: "healthguide", mustNot: "youtube" },
+  // but the video sense must still land on youtube
+  { q: "why did my youtube video go viral and can I repeat it", want: "youtube" },
+
+  // 'audience' is communication's (persuasion), which is the word youtube most
+  // wanted for viewer demographics.
+  { q: "how do I read my audience during a presentation", want: "communication", mustNot: "youtube" },
+  { q: "how do I keep an audience engaged while public speaking", want: "communication", mustNot: "youtube" },
+  // the demographics sense stays with youtube
+  { q: "what age group and gender watch my channel", want: "youtube", mustNot: "communication" },
+
+  // 'analytics' and 'platform' are both polymath's
+  { q: "what analytics platform should I use for our data warehouse", want: "polymath", mustNot: "youtube" },
+  // 'upload' is docingest's
+  { q: "how do I upload a document so the AI can read it", want: "docingest", mustNot: "youtube" },
+  // 'views' left untagged — the religious-opinion sense
+  { q: "what are Buddhist views on suffering", want: "faiths", mustNot: "youtube" },
+  // 'growth' and 'shorts' left untagged — nestegg owns both senses
+  { q: "what is the compound growth on 500 dollars a month", want: "nestegg", mustNot: "youtube" },
+  { q: "should I be shorting a stock right now", mustNot: "youtube" },
+  // 'transcript' left untagged — the academic sense is education's
+  { q: "how do I request my college transcript", want: "education", mustNot: "youtube" },
+  // but captions stay with youtube
+  { q: "get me the captions for this youtube video", want: "youtube", mustNot: "education" },
+  // bare 'engagement' left untagged — three unrelated senses share the word
+  { q: "how do I improve employee engagement on my team", want: "jobhunt", mustNot: "youtube" },
+  // 'creator' left untagged — the theological sense
+  { q: "who do Muslims believe is the creator of the universe", want: "faiths", mustNot: "youtube" },
+  // 'video'/'videos' ARE claimed, so guard the neighbouring senses explicitly
+  { q: "how do I set up a video call for my team standup", mustNot: "youtube" },
 ];
 
 let pass = 0;

@@ -176,4 +176,54 @@ export const GOLDEN = [
   { q: "what are the odds the Lakers win tonight", expect: ["sports"], alsoOk: ["research"], note: "BOUNDARY: sports 'odds' must NOT reach kalshi — this is why the bare 'odds' tag was dropped" },
   { q: "how should I invest my 401k for retirement", expect: ["nestegg"], note: "BOUNDARY: real investing stays with nestegg, not the speculation asset" },
   { q: "how do I hedge my portfolio against a downturn", expect: ["nestegg"], note: "BOUNDARY: 'hedge' is portfolio vocabulary, deliberately not a kalshi tag" },
+
+  // psychology (the FIELD — not anyone's own mental health)
+  { q: "explain classical and operant conditioning", expect: ["psychology"] },
+  { q: "what is the Big Five personality model", expect: ["psychology"] },
+  { q: "how does attachment theory work in child development", expect: ["psychology"] },
+  { q: "what did the Milgram obedience experiments actually find", expect: ["psychology"] },
+  { q: "what is kinesics and how do researchers study body movement", expect: ["psychology"] },
+  { q: "explain the replication crisis in psychology", expect: ["psychology"] },
+  { q: "is the Myers-Briggs personality test scientifically valid", expect: ["psychology"], alsoOk: ["research"], note: "VERIFIER: 'scientifically valid' asks for an independent check of a claim — the maker-can't-verify-itself case (src/index.ts protocol). psychology owns the topic; whether MBTI holds up is what an offline specialist should not self-certify." },
+
+  // BOUNDARY CASES against the neighbouring assets. Psychology's natural
+  // vocabulary is almost entirely spoken for, and every line below is a word
+  // this asset deliberately did NOT tag. Measured before shipping, because a
+  // golden-set win can hide a real collision (see the kalshi block above).
+  { q: "I think I might be depressed and I don't know what to do", expect: ["healthguide"], note: "BOUNDARY, SAFETY-CRITICAL: personal mental health must NEVER reach the explainer. healthguide runs a non-suppressible 911/988 override first. This is why 'depression'/'anxiety'/'stress'/'therapist' are healthguide tags and psychology does not claim one of them." },
+  { q: "how do I find a therapist and will my insurance cover it", expect: ["healthguide"], note: "BOUNDARY: care navigation is healthguide, not the field explainer" },
+  { q: "how do I read someone's body language in a negotiation", expect: ["communication"], note: "BOUNDARY: the PRACTICE of reading people is communication's — it owns bodylanguage/nonverbal/posture/eyecontact. psychology only claims the technical science terms (kinesics, proxemics, paralanguage)." },
+  { q: "how do I make my presentation more persuasive", expect: ["communication"], note: "BOUNDARY: 'persuasion' is a communication tag, deliberately not claimed here" },
+  { q: "how should I study for my psychology exam", expect: ["education"], note: "BOUNDARY: studying a SUBJECT is education, even when the subject is this asset's field" },
+  { q: "what did Einstein actually discover", expect: ["curiosity"], note: "BOUNDARY: curiosity's 'minds_science' branch is GREAT SCIENTIFIC MINDS — biography, not cognition. Easy to confuse by name." },
+  { q: "how does the attention mechanism work in a transformer", expect: ["aiforge"], note: "BOUNDARY: 'attention' is an aiforge tag (attention mechanism). psychology does not claim it, despite attention being a core cognitive topic." },
+  { q: "how should I design memory for my AI agent", expect: ["loop"], note: "BOUNDARY: 'memory' belongs to loop (agent memory). psychology does not claim it, despite memory being its most famous subject." },
+
+  // youtube (NETWORKED asset — see AGENTS.md "Networked assets")
+  { q: "how many views and likes does this YouTube video have", expect: ["youtube"] },
+  { q: "compare the subscriber counts of these two YouTube channels", expect: ["youtube"] },
+  { q: "what age group watches my YouTube channel", expect: ["youtube"] },
+  { q: "what device type and operating system do my viewers watch on", expect: ["youtube"] },
+  { q: "which of my videos do 18-24 year olds watch the most", expect: ["youtube"] },
+  { q: "find fast growing YouTube videos about AI agents from this week", expect: ["youtube"] },
+  { q: "get me the captions for this YouTube video", expect: ["youtube"] },
+  { q: "what is my YouTube watch time and engagement rate", expect: ["youtube"] },
+  { q: "pull the comments on this YouTube video and cluster what people care about", expect: ["youtube"] },
+  { q: "what topics do the top trending videos in my niche cover", expect: ["youtube"] },
+
+  // BOUNDARY CASES against the neighbouring assets. Every line below is a word
+  // youtube deliberately did NOT tag, either because another asset already owns
+  // it (audience/analytics/platform/upload) or because the everyday sense of the
+  // word lives elsewhere. Enumerated from the registry tag->owner map BEFORE
+  // shipping, not after — a golden-set win hides collisions otherwise, which is
+  // exactly what happened to kalshi and psychology above.
+  { q: "how do I read my audience during a presentation", expect: ["communication"], note: "BOUNDARY: 'audience' is communication's (persuasion). youtube wanted it badly for viewer demographics and does not claim it." },
+  { q: "what analytics platform should I use for our data warehouse", expect: ["polymath"], note: "BOUNDARY: 'analytics' AND 'platform' are both polymath tags. youtube uses the compound 'ytanalytics' instead." },
+  { q: "how do I upload a document so the AI can read it", expect: ["docingest"], note: "BOUNDARY: 'upload' is docingest's, despite being core YouTube vocabulary." },
+  { q: "what are Buddhist views on suffering", expect: ["faiths"], note: "BOUNDARY: 'views' left untagged on purpose — the religious-opinion sense would have been captured by a view-count tag." },
+  { q: "is my cough viral or bacterial", expect: ["healthguide"], note: "BOUNDARY, SAFETY-CRITICAL: 'viral' left untagged. A viral-video tag would have routed a symptom question to a metrics server." },
+  { q: "what is the compound growth on 500 dollars a month", expect: ["nestegg"], note: "BOUNDARY: 'growth' left untagged — nestegg owns the compounding sense and youtube uses per-tool vocabulary for velocity." },
+  { q: "should I be shorting a stock right now", expect: ["nestegg"], alsoOk: ["kalshi"], note: "BOUNDARY: 'shorts' left untagged. The YouTube product name collides head-on with the trading verb; youtube claims 'youtubeshorts' instead." },
+  { q: "how do I request my college transcript", expect: ["education"], note: "BOUNDARY: 'transcript' left untagged — the academic sense is education's. youtube claims 'captions'." },
+  { q: "how do I improve employee engagement on my team", expect: ["jobhunt"], note: "BOUNDARY: bare 'engagement' left untagged; youtube claims 'engagementrate'." },
 ];
