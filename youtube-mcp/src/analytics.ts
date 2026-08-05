@@ -31,7 +31,21 @@ export interface ReportSpec {
   sort?: string;
   /** Why this pairing and not another — surfaced in output so it is auditable. */
   note: string;
+  /**
+   * Some reports are "top-N" queries and the API REJECTS them without an
+   * explicit maxResults. Found the hard way: the first live run of the weekly
+   * routine got HTTP 400 badRequest "The query is not supported" on top_videos,
+   * twice, while youtube_get_age_group_preferences ran the same report fine —
+   * because that tool passes max (its top_n) and the demographics tool did not.
+   * Reproduced deliberately: identical call with maxResults=10 succeeds.
+   * Defaulting here rather than at each call site so a future report with the
+   * same constraint cannot reintroduce it.
+   */
+  requiresMaxResults?: boolean;
 }
+
+/** Applied when a requiresMaxResults report is called without one. */
+export const DEFAULT_MAX_RESULTS = 10;
 
 export const REPORTS: Record<string, ReportSpec> = {
   age_gender: {
@@ -80,6 +94,7 @@ export const REPORTS: Record<string, ReportSpec> = {
     metrics: "views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained",
     sort: "-estimatedMinutesWatched",
     note: "Ranked by watch time. subscribersGained included because it is the clearest signal of which videos recruit rather than merely entertain.",
+    requiresMaxResults: true,
   },
 };
 
@@ -141,7 +156,8 @@ export async function runReport(
     metrics: spec.metrics,
     dimensions: spec.dimensions,
     sort: spec.sort,
-    maxResults: opts.max,
+    // A top-N report without maxResults is a hard 400, not a degraded result.
+    maxResults: opts.max ?? (spec.requiresMaxResults ? DEFAULT_MAX_RESULTS : undefined),
     filters: filterParts.length ? filterParts.join(";") : undefined,
   };
 
