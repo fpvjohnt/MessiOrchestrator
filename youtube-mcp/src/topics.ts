@@ -66,8 +66,27 @@ export const TOPICS: Record<string, TopicEntry> = {
   },
   music: {
     label: "Music",
-    keys: ["official video", "official audio", "cover of", "remix", "lyrics", "full album", "live concert", "guitar solo", "piano tutorial"],
-    viewerIntent: "Repeat listening. Watch time comes from replays and background play, so discovery metrics badly understate value.",
+    // The original key set covered POP/RELEASE vocabulary only ("official
+    // video", "remix", "lyrics") and matched almost nothing in instrumental
+    // music. Measured 2026-08-05 on a real "piano instrumental composition"
+    // scan: 16 of 18 videos matched NO cluster, and the 2 that did matched on
+    // incidental words ("lyrics" from a tag, "how to" from a title) rather than
+    // subject matter. Titles like "500 Most Famous Beautiful Piano Melodies",
+    // "Relaxing Piano Instrumental", "Hans Zimmer Iconic Soundtracks" and
+    // "Piano Solo" have no overlap with release vocabulary at all.
+    //
+    // The tool reported the 16/18 unmatched residue honestly, which is what
+    // made the gap visible — but an 89% miss rate makes the cluster shares
+    // meaningless, so the honest reporting was carrying the whole design.
+    keys: [
+      "official video", "official audio", "cover of", "remix", "lyrics", "full album",
+      "live concert", "guitar solo", "piano tutorial",
+      // instrumental / composition vocabulary
+      "instrumental", "piano solo", "piano melodies", "relaxing piano", "piano music",
+      "soundtrack", "backing track", "sheet music", "nocturne", "orchestral",
+      "symphony", "composer", "chord progression", "improvisation",
+    ],
+    viewerIntent: "Repeat listening. Watch time comes from replays and background play, so discovery metrics badly understate value — and for instrumental work especially, the video is often never looked at.",
   },
   education_academic: {
     label: "Education / academic",
