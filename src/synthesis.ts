@@ -1,4 +1,5 @@
 import type { Case, CaseTaskLog } from "./types.js";
+import { expectsDecision } from "./context-gaps.js";
 
 // Cross-asset synthesis — the "correlate, don't just concatenate" step. The
 // orchestrator has no LLM (by design: deterministic + offline), so this doesn't
@@ -141,8 +142,12 @@ export function synthesizeCase(c: Case): string {
   ];
 
   if (sources.size) {
-    out.push(``, `SOURCES CITED (${sources.size}):`, ...[...sources].slice(0, 12).map((u) => `  - ${u}`));
-    if (sources.size > 12) out.push(`  … and ${sources.size - 12} more`);
+    // ALL of them, not the first 12. Sources are the audit trail for both
+    // "is this true" and "is this current" — they are the one part of a digest
+    // a reader may need to go and check by hand, and a hidden source cannot be
+    // checked. The old "… and N more" quietly removed exactly the long tail
+    // that a thorough research call had worked hardest to gather.
+    out.push(``, `SOURCES CITED (${sources.size}):`, ...[...sources].map((u) => `  - ${u}`));
   }
 
   const flags: string[] = [];
@@ -211,6 +216,40 @@ export function synthesizeCase(c: Case): string {
     `away or silently pick the more confident one. Where a flag above applies, it belongs in the`,
     `answer, not just in this digest. Answer the question that was asked; do not pad the response`,
     `with caveats the evidence does not support, and do not withhold a conclusion the evidence does.`
+  );
+
+  // A DECISION question gets a decision. Surveying the options and stopping is
+  // the most common way a well-researched answer still fails the person who
+  // asked — they came with a choice to make and leave still holding it.
+  if (expectsDecision(c.objective)) {
+    out.push(
+      ``,
+      `THE OBJECTIVE ASKS FOR A CHOICE — so end with one.`,
+      `  • Name the option you would take, in one sentence, before the reasoning.`,
+      `  • Name the single fact that decided it. If you cannot, you have not decided.`,
+      `  • Say what would have to be true for the other option to win — that is what makes a`,
+      `    recommendation checkable instead of merely confident.`,
+      `  • If the evidence genuinely does not separate them, say so and name the tiebreaker to`,
+      `    go and check. "It depends" alone is not that; "it depends on X, and here is how to`,
+      `    find X" is.`
+    );
+  }
+
+  // Tone, stated once, at the point of writing.
+  out.push(
+    ``,
+    `TONE: write it the way a knowledgeable person would say it out loud. Not upbeat, not grim —`,
+    `accurate. Do not open by praising the question. Do not soften a real problem into a`,
+    `"consideration", and do not inflate an ordinary finding into a breakthrough. If the news is`,
+    `good, say it plainly and stop; if it is bad, say that plainly too and say what can be done.`,
+    `Confidence should track the evidence above: where the flags say uncertain, sound uncertain.`,
+    ``,
+    `LENGTH AND WORDS: everyday language, as if explaining to a smart child — no jargon, and any`,
+    `unavoidable technical word gets one short definition. The ANSWER goes in the first sentence,`,
+    `not after a wind-up. Then only what is needed to act on it, and stop. This digest is long`,
+    `because it is WORKING; the answer built from it should be short. Do not walk the reader`,
+    `through the assets consulted, the flags checked, or the steps taken — they asked a question,`,
+    `not for a report on the process. A long answer is not a more helpful one.`
   );
   return out.join("\n");
 }

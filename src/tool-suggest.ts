@@ -91,6 +91,21 @@ const INTENT_GROUPS: string[][] = [
   // research.verify -> research. Observed 2026-07-26. Also lets a bare "verify"
   // reach an asset's *_verdict half, which is the step callers skip most.
   ["verify", "verdict", "research", "corroborate", "confirm", "factcheck"],
+  // The GENERIC-VERB class, and the last unhandled group in export_failures.
+  // Callers reach for a bare verb that no asset actually exposes — psychology
+  // .analyze (real: explain_topic), communication.analyze (explain_skill),
+  // curiosity.analyze (explore). All three score 0.0 on every textual signal
+  // because a one-word guess shares no spelling with a two-word tool name.
+  //
+  // This is the single most repeated shape in the corpus: four of the eleven
+  // unknown_tool rows are one of two verbs, aimed at four different assets. The
+  // guess is never wrong about INTENT — it is asking the explainer to explain —
+  // only about this registry's naming convention.
+  ["analyze", "analyse", "explain", "explore", "topic", "skill", "describe"],
+  // polymath.answer -> ask_the_expert. Same shape, the other verb. Folded into
+  // the existing consult/ask group rather than a new one, because "answer my
+  // question" and "ask the expert" are the same request from the two ends.
+  ["answer", "respond", "consult", "ask", "expert", "question"],
 ];
 
 /** 0.6 when guess and real share an intent group — above the floor, below a real textual match. */

@@ -1,0 +1,22 @@
+{
+  "name": "chemistry-mcp",
+  "version": "0.1.0",
+  "description": "Chemistry MCP: working chemistry rather than chemistry appreciation. The full 118-element periodic table as data (IUPAC masses, Pauling electronegativity, oxidation states, electron configurations), a strict formula parser with molar mass and percent composition, an exact-rational equation balancer with an atom-by-atom proof, stoichiometry with limiting reagent and percent yield, bond-type and VSEPR prediction, acid/base pH including the exact weak-acid solution, and reference tables for polyatomic ions and organic functional groups. Runs as an asset under orchestrator-mcp.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": { "chemistry-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10"
+  },
+  "engines": { "node": ">=18" }
+}

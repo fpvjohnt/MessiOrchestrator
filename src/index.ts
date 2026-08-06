@@ -6,7 +6,8 @@ import * as registry from "./registry.js";
 import * as caseStore from "./case-store.js";
 import * as clientManager from "./client-manager.js";
 import { selectAssets, explainRouting } from "./router.js";
-import { checkAssets, renderHealth } from "./health.js";
+import { checkAssets, checkSelf, renderHealth } from "./health.js";
+import { contextGaps, expectsDecision, renderGaps } from "./context-gaps.js";
 import { synthesizeCase, renderOutcome } from "./synthesis.js";
 import type { AssetConfig } from "./types.js";
 import { resolve } from "node:path";
@@ -27,6 +28,17 @@ const ORCHESTRATOR_INSTRUCTIONS = [
   "LOOK AHEAD on a COMPLEX or multi-asset request: call plan_case(objective) FIRST to preview which specialists will be assigned (and why), the near-misses, and the batch flow — so the plan is visible and correctable BEFORE you spend calls. If the routing looks wrong, fix the objective wording or pass preferred_assets. Skip plan_case for a simple single-domain question and just run the fast path.",
   "KEEP CASES FAST — minimize round-trips (each tool call is a slow hop, especially over the phone bridge): do the whole case in as FEW tool calls as you can — skip plan_case unless the request is genuinely complex, then ONE task_assets batch -> synthesize_case -> close_case — and never make many sequential task_asset calls.",
   "DO NOT ASK — JUST GO: for a normal information / analysis / how-to / lookup request, ask NO clarifying question and request NO permission — route straight to the orchestrator and answer immediately, making the single most sensible assumption if anything is unspecified (mention it in one short line only if it materially matters). The user wants a straight answer fast, not a question back. The ONLY thing that still pauses for a one-line confirm is an irreversible or outward-facing ACTION about to happen — submitting a form, sending a message, making a purchase. Everything else: proceed without asking.",
+  // Added 2026-08-05 at John's direct request: "explain it like a child would and
+  // be straight and to the point, don't give so much."
+  //
+  // A NARROWER version of commit b4e0092, which was reverted the same day it
+  // landed. That one failed for two specific reasons, and both are deliberately
+  // absent here: it told the model to give ONE paragraph and then pause to ask
+  // "want the next part?", which turned every answer into a two-step and fought
+  // the DO-NOT-ASK rule directly above; and it offered to build visuals and
+  // animations, which he separately asked to stop because generating them makes
+  // him wait. Plain and SHORT is the part he actually wanted. Keep it that way.
+  "PLAIN AND SHORT — HOW THIS USER WANTS TO BE ANSWERED: use everyday words, the way you would explain something to a smart child. No jargon; if a technical word is truly unavoidable, define it in one short line. Lead with the ANSWER in the first sentence — never with background, a recap of the question, or a preamble about what you are about to do. Then give only what is needed to act on it, and STOP. Do not write section headers, tables, or long lists unless he asked for one. Do not narrate your process or list everything you checked. Depth is available on request: it is fine to end with one short offer like 'want the detail?', but never pause mid-answer to ask permission to continue, and never make an animation or visual. A long answer is not a more helpful answer to him — it is a harder one.",
   "SPEED NEVER COMES FROM SKIPPING VERIFICATION. Keep the full verify loop on any current/checkable fact — a fast WRONG answer is worse than a correct one, and every fact must trace to a REAL source. Make verification cost nothing extra by running the research verifier IN THE SAME task_assets batch as the specialists (they execute in PARALLEL, so the check adds no round-trip), then label VERIFIED / UPDATED / UNVERIFIED and cite the source. The speed-ups above come from batching calls and asking fewer questions — never from trusting an unverified claim.",
   "The orchestrator itself is deterministic and has NO language model — YOU are the reasoning/checker in this loop. Do not stop at the first asset answer when it contains facts.",
   "",
@@ -66,7 +78,25 @@ function textResult(text: string) {
 // truncated). Without this, a verbose or hostile sub-server returning
 // megabytes per call makes cases.json grow without bound, and every later
 // appendLog/case_report pays to parse and rewrite all of it.
-const MAX_LOGGED_CHARS = 8_192;
+//
+// RAISED 8,192 -> 32,768 on 2026-08-05, measured against the real case log
+// rather than guessed (AGENTS.md: "do not set a length cap you have not
+// measured"). At 8 KB the cap was cutting 133 of 1,065 successful calls —
+// 12.5%, discarding 581,585 characters — and 132 of those 133 were `research`,
+// which is both the fallback asset that rides along on ~45% of traffic and the
+// one that carries the corroborated facts and the source URLs.
+//
+// That mattered more than a storage number, because synthesize_case reads the
+// LOG, not the live response. One call in eight was being merged into a final
+// answer from a truncated body: the sources at the bottom of a research dossier
+// were the first thing to go, and "No sources cited" is a FLAG that changes how
+// the answer must be written. The cap was manufacturing that flag.
+//
+// Sizing: of the 133 truncated entries the largest original was 30,986 chars
+// (p50 9,571 / p90 20,427 / p99 25,927). 32 KB clears 100% of observed traffic
+// with headroom; 16 KB would still have cut 22% of them. Cost is about 0.6 MB
+// on a 2.9 MB cases.json, and archive-cases.mjs already bounds long-term growth.
+const MAX_LOGGED_CHARS = 32_768;
 
 /**
  * Truncate for persistence WITHOUT destroying the structure synthesis reads.
@@ -434,10 +464,13 @@ server.registerTool(
       }
 
       const caseRecord = await caseStore.createCase(objective, assigned, rationale);
+      // Surface the missing context AT OPEN TIME, while the question can still
+      // be sharpened — after the answer is written it is too late to be useful.
+      const gapText = renderGaps(contextGaps(objective, assigned), expectsDecision(objective));
       return textResult(
         `Case ${caseRecord.id} opened.\nObjective: ${objective}\nAssigned assets: ${
           assigned.length ? assigned.join(", ") : "(none)"
-        }\nRouting rationale: ${rationale}`
+        }\nRouting rationale: ${rationale}${gapText}`
       );
     } catch (err) {
       return errorResult(err);
@@ -712,7 +745,10 @@ server.registerTool(
       "because the specialist added little, or if you had to change the question to fit the assets — that is " +
       "'partial' at best. If a better-suited asset existed, it is 'misrouted' EVEN IF the answer was good; " +
       "a good answer from the wrong specialist is still a routing miss, and grading it 'resolved' is exactly " +
-      "how the routing answer key fills up with false positives and stops being able to detect anything.",
+      "how the routing answer key fills up with false positives and stops being able to detect anything. " +
+      "ENFORCED, not merely advised: 'resolved' is REFUSED on a case where no asset call succeeded — that " +
+      "label asserts a specialist met the objective, and the runtime can see whether one ever ran. Close such " +
+      "a case as 'partial' (you answered it yourself), or task the assigned asset first and then close.",
     inputSchema: {
       case_id: z.string().min(1),
       summary: z.string().optional(),
@@ -726,6 +762,47 @@ server.registerTool(
   },
   async ({ case_id, summary, outcome, should_have_routed_to }) => {
     try {
+      // THE ZERO-CALL GUARD. Measured 2026-08-05: caselog-eval had to exclude
+      // 318 cases that logged no successful asset call at all, and audit_report
+      // shows 11 active assets that have NEVER been called — including
+      // `education`, assigned to 89 closed cases with zero calls, and reading
+      // 100% good. Those cases were answered from the orchestrator's own
+      // knowledge and then graded by the thing that answered them.
+      //
+      // This is the same self-grading failure as the all-'resolved' label
+      // distribution, one level up: it moved from "how did the answer turn out"
+      // to "did a specialist even participate". No outcome label can detect it,
+      // because the grader has no way to know it never called anyone.
+      //
+      // So the RUNTIME decides this one, not the model. A case with no
+      // successful call has no evidence a specialist contributed, and
+      // 'resolved' is refused outright — 'partial' remains available and is the
+      // honest label for "I answered it myself". Nothing here can be flattered:
+      // the log either contains a successful call or it does not.
+      if (outcome === "resolved") {
+        const existing = await caseStore.getCase(case_id);
+        const succeeded = existing?.log.filter((e) => !e.error).length ?? 0;
+        if (existing && succeeded === 0) {
+          const attempted = existing.log.length;
+          return textResult(
+            [
+              `REFUSED: cannot close ${case_id} as 'resolved' — no asset call in this case succeeded.`,
+              ``,
+              attempted === 0
+                ? `  This case logged ZERO asset calls. Its assets were assigned and never used.`
+                : `  This case logged ${attempted} asset call(s), and every one of them errored.`,
+              ``,
+              `  'resolved' asserts a specialist met the objective. Nothing here shows one ran, so`,
+              `  the label would record the orchestrator's own confidence as if it were the`,
+              `  system's performance — which is how 'education' came to read 100% good over 89`,
+              `  cases without ever executing a single tool.`,
+              ``,
+              `  Either task the assigned asset(s) and then close, or close as 'partial'`,
+              `  (answered without the specialist) / 'unresolved' / 'misrouted'.`,
+            ].join("\n")
+          );
+        }
+      }
       const caseRecord = await caseStore.closeCase(case_id, summary, outcome, should_have_routed_to);
       const gt = should_have_routed_to?.length ? ` — recorded should-have-routed: ${should_have_routed_to.join(", ")}` : "";
       const lines = [`Case ${caseRecord.id} closed${outcome ? ` (outcome: ${outcome})` : ""}${gt}.`];
@@ -772,10 +849,18 @@ server.registerTool(
   async () => {
     try {
       const assets = await registry.listAssets();
-      const results = await checkAssets(assets, {
+      const deps = {
         orchestratorStartedAt: ORCHESTRATOR_STARTED_AT,
-        introspect: (a) => clientManager.introspectAsset(a),
-        entryMtime: async (a) => {
+        introspect: (a: AssetConfig) => clientManager.introspectAsset(a),
+        // This process's own built entry — process.argv[1] is the script node
+        // was launched with, which for a built orchestrator is dist/index.js.
+        selfMtime: async () => {
+          const entry = process.argv[1];
+          if (!entry) return undefined;
+          const s = await stat(entry);
+          return s.mtime;
+        },
+        entryMtime: async (a: AssetConfig) => {
           // Only stdio assets launched from a local script have a build file to stat.
           const entry = a.args?.[0];
           if (a.transport !== "stdio" || !entry) return undefined;
@@ -783,8 +868,9 @@ server.registerTool(
           const s = await stat(path);
           return s.mtime;
         },
-      });
-      return textResult(renderHealth(results, ORCHESTRATOR_STARTED_AT));
+      };
+      const [results, self] = await Promise.all([checkAssets(assets, deps), checkSelf(deps)]);
+      return textResult(renderHealth(results, ORCHESTRATOR_STARTED_AT, self));
     } catch (err) {
       return errorResult(err);
     }

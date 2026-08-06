@@ -143,6 +143,102 @@ const PROBES = [
   { q: "who do Muslims believe is the creator of the universe", want: "faiths", mustNot: "youtube" },
   // 'video'/'videos' ARE claimed, so guard the neighbouring senses explicitly
   { q: "how do I set up a video call for my team standup", mustNot: "youtube" },
+
+  // ── 'bond': chemistry (curiosity) vs fixed income (nestegg) ────────────────
+  // Added 2026-08-05 with the covalent-bond idiom. nestegg carries `bond` AND
+  // `bonds`, which stem to the same token and therefore score twice — so the
+  // finance sense wins uncontested unless the chemistry sense is named. Both
+  // directions are asserted: the fix is only correct if it moves chemistry
+  // WITHOUT moving fixed income.
+  { q: "what is a covalent bond", want: "chemistry", mustNot: "nestegg" },
+  { q: "explain ionic and covalent bonds in simple terms", want: "chemistry", mustNot: "nestegg" },
+  { q: "why is a hydrogen bond weaker than a chemical bond", want: "chemistry", mustNot: "nestegg" },
+  { q: "what does bond angle mean in a water molecule", want: "chemistry", mustNot: "nestegg" },
+  // the finance sense must be untouched — these are the queries the idiom must
+  // NOT fire on
+  { q: "should I hold bonds in my retirement portfolio", want: "nestegg", mustNot: "curiosity" },
+  { q: "compare treasury bonds versus municipal bonds for income", want: "nestegg", mustNot: "curiosity" },
+  { q: "are bond funds safer than stocks right now", want: "nestegg", mustNot: "curiosity" },
+
+  // ── 'memory': human cognition (psychology) vs agent memory (loop) ──────────
+  // Added 2026-08-05 with the memory idioms. See the psychology probe above —
+  // "how should I design memory for my AI agent" already asserts the agent
+  // sense; these assert the human sense AND re-assert the agent sense under the
+  // phrasings the new idioms could plausibly catch by accident.
+  { q: "how does memory work and why do we forget things", want: "psychology", mustNot: "loop" },
+  { q: "what is the difference between short term memory and long term memory", want: "psychology", mustNot: "loop" },
+  { q: "is photographic memory a real thing", want: "psychology", mustNot: "loop" },
+  { q: "why do we forget things we just learned", want: "psychology", mustNot: "loop" },
+  // the agent sense must survive the new idioms
+  { q: "how do I add long term memory to my agent with a vector store", want: "loop" },
+  { q: "what memory architecture should my multiagent system use", want: "loop", mustNot: "psychology" },
+  // words deliberately NOT mapped to cognition — the everyday senses
+  { q: "I forgot my password and cannot log in", mustNot: "psychology" },
+  { q: "is there a safety recall on my car", mustNot: "psychology" },
+
+  // ── 'video': production craft vs youtube ANALYTICS ─────────────────────────
+  // youtube's eleven tools are all statistics — views, growth, comments,
+  // demographics. None can answer a craft question, so a production query
+  // landing there is worse than falling through to research. Guard both senses.
+  { q: "what camera settings should I use for indoor video", mustNot: "youtube" },
+  { q: "how do I edit b roll into my video", mustNot: "youtube" },
+  { q: "how do I get better audio quality in my videos", mustNot: "youtube" },
+  { q: "how do I color grade footage for a short film", mustNot: "youtube" },
+  // the analytics sense must be untouched
+  { q: "how many views and comments did my video get this week", want: "youtube" },
+  { q: "find fast growing videos about AI agents from this week", want: "youtube" },
+
+  // ── 'language': register/wording vs linguistics ────────────────────────────
+  // linguistics carries `language` AND `languages`, so it scored 6 and won three
+  // real objectives about a palm tree, a medication and a bowel condition.
+  { q: "explain diverticulitis in plain language for a beginner", mustNot: "linguistics" },
+  { q: "explain this medication in simple child-friendly language", mustNot: "linguistics" },
+  // the real linguistics sense must survive
+  { q: "how are the Indo-European languages related to each other", want: "linguistics" },
+  { q: "what makes a language hard to learn for English speakers", want: "linguistics" },
+
+  // ── wording co-assignment (needsWordingHelp) ───────────────────────────────
+  // communication must ride along when the ask is to WORD something, without
+  // displacing the asset that owns the subject matter.
+  { q: "draft a short text reply to my real estate agent confirming the offer", want: "communication" },
+  { q: "rewrite this message to my landlord in my own plain voice", want: "communication" },
+  { q: "help me respond professionally to my recruiter about the offer", want: "communication" },
+  // homebuyer must still LEAD on the real-estate ones — co-assign adds, never displaces
+  { q: "draft a short text reply to my real estate agent confirming the offer", want: "homebuyer" },
+  // and it must NOT fire on objectives that merely contain the words
+  { q: "how do I extract the text from a scanned pdf document", mustNot: "communication" },
+  { q: "what voice options does the text to speech api support", mustNot: "communication" },
+
+  // ── words consumed by the new idioms — the other sense must still work ─────
+  { q: "why do people conform in groups", want: "psychology" },
+  { q: "what is the compound growth on 500 dollars a month", want: "nestegg", mustNot: "curiosity" },
+  { q: "how should I study for my psychology exam", want: "education", mustNot: "psychology" },
+  { q: "how does attachment theory work in child development", want: "psychology", mustNot: "docingest" },
+
+  // ── chemistry vs curiosity: CALCULATION vs WONDER ─────────────────────────
+  // The boundary that decides whether adding this asset was worth it. curiosity
+  // owns the science-history and materials prose ("why is the table shaped like
+  // that", "why does iron rust"); chemistry owns anything with a formula, a
+  // number, or a mechanism. Both directions are asserted, because an asset that
+  // steals its neighbour's questions is worse than no asset.
+  { q: "what is the molar mass of calcium nitrate", want: "chemistry" },
+  { q: "balance this chemical equation C3H8 + O2 -> CO2 + H2O", want: "chemistry" },
+  { q: "what is the oxidation state of manganese in permanganate", want: "chemistry" },
+  { q: "calculate the pH of a 0.01 molar HCl solution", want: "chemistry" },
+  { q: "what is a covalent bond", want: "chemistry", mustNot: "nestegg" },
+  { q: "how many protons and what electron configuration does iron have", want: "chemistry" },
+  { q: "find the empirical formula from the percent composition", want: "chemistry" },
+  // curiosity keeps the wonder and materials side
+  { q: "why is the periodic table shaped the way it is", want: "curiosity" },
+  { q: "why does iron rust and what is corrosion", want: "curiosity", mustNot: "chemistry" },
+  { q: "why does concrete get harder over time", want: "curiosity", mustNot: "chemistry" },
+  { q: "is glass really a slow flowing liquid", want: "curiosity", mustNot: "chemistry" },
+  // neighbouring senses of words chemistry claims — these must NOT reach it
+  { q: "what is the yield on a ten year treasury bond", mustNot: "chemistry" },
+  { q: "what excel formula sums a column by condition", mustNot: "chemistry" },
+  { q: "how do I check my account balance", mustNot: "chemistry" },
+  { q: "solve this algebra equation for x", mustNot: "chemistry" },
+  { q: "my molar tooth hurts when I chew", mustNot: "chemistry" },
 ];
 
 let pass = 0;

@@ -73,6 +73,26 @@ const CONCEPTS: Record<string, string[]> = {
   // "taxe" and never reaches the tag. "do I owe taxes on this settlement" fell
   // through to research because of one letter.
   tax: ["taxe", "taxation"],
+  // psychology 'cognition' — the memory/forgetting vocabulary. psychology tags
+  // the abstract noun `cognition`; nobody types it. They ask why they forget
+  // things. The word people DO type — `memory` — is loop's (agent memory), so
+  // it cannot be claimed here; see the IDIOMS entries below that carry the human
+  // sense. These surfaces are the ones loop does NOT own, checked against the
+  // registry tag->owner map before adding: all five are unclaimed by any asset.
+  //
+  // DELIBERATELY EXCLUDED, both measured against real phrasings rather than
+  // guessed: `recall` is a PRODUCT recall ("is there a recall on my car") and
+  // `forgot` is a credential ("I forgot my password"). Both would route an
+  // everyday question to a psychology explainer, and neither word is needed —
+  // `forget` and `forgetting` carry the cognitive sense on their own. Note the
+  // stemmer folds only a trailing "s", so `forget` and `forgot` are distinct
+  // tokens and including one does not drag in the other.
+  cognition: ["forget", "forgetting", "memorize", "memorise", "amnesia", "mnemonic"],
+  // psychology 'conformity' — the stemmer folds only a trailing "s", so the VERB
+  // never reaches the noun tag. "why do people conform in groups" is the
+  // textbook Asch question and it scored 0 on psychology. `conform` is
+  // unclaimed by every other asset.
+  conformity: ["conform", "conforming", "conformed"],
 };
 
 // Multi-word concepts. The KEY is the phrase as the query says it, in
@@ -85,25 +105,11 @@ const CONCEPTS: Record<string, string[]> = {
 // grouped by the asset it feeds so an operator can see, per asset, what natural
 // phrasing the tags themselves do not cover.
 const PHRASES: Record<string, string> = {
-  // → psychology. "attachment" alone is docingest's (email/file attachments)
-  // and it OUTSCORED psychology 7-5 on an attachment-theory question when the
-  // bare tag was tried. Measured, then dropped — the phrase carries the meaning
-  // the single word cannot, which is exactly what this layer is for.
-  "attachment theory": "developmental",
-  "attachment style": "developmental",
-  "attachment styles": "developmental",
-
-  // → nestegg. A genuine pre-existing collision, and a good example of why the
-  // single carrying word is the wrong lever: `compound` is a CURIOSITY tag (a
-  // chemical compound), so "what is the compound growth on 500 dollars a month"
-  // routed to the science explainer. nestegg tags `compounding`,
-  // `compoundinterest` and `compounded` — every form EXCEPT the bare adjective
-  // people actually type. Mapping `compound -> compounding` in CONCEPTS would
-  // drag nestegg into every chemistry question, so the phrase carries it.
-  "compound growth": "compounding",
-  "compound interest": "compoundinterest",
-  "compound return": "compounding",
-  "compound returns": "compounding",
+  // NOTE: "attachment theory" and "compound growth" USED to live here, adding a
+  // canon without removing the misleading token — which left docingest and
+  // curiosity still scoring and riding along as measured golden noise. Both are
+  // now IDIOMS below, because they need to SUBTRACT as well as add. If you are
+  // looking for them, that is where they went.
 
   // → jobhunt. jobhunt tags `employment`/`hire`/`promotion` but neither
   // `employee` nor `engagement`. Bare `engagement` is unclaimed and must stay
@@ -231,6 +237,59 @@ const PHRASES: Record<string, string> = {
   "similarity search": "embedding",
   "semantic search": "embedding",
   "nearest neighbor": "embedding",
+
+  // → communication. THE largest single real-traffic miss class: 12 of the 41
+  // caselog misses are one shape — "draft/reply/reword this message to my
+  // agent". communication owns that craft and carries `rapport`/`persuasion`,
+  // but it tags none of the words people actually use to ask for it (draft,
+  // message, text, reply, reword, voice, tone are ALL unclaimed by every asset).
+  // So homebuyer won every one of them on the real-estate CONTENT while the
+  // asset that knows how to word the thing was never assigned.
+  //
+  // Bigrams, not the bare verbs: "draft" alone is a bank draft and a draft
+  // pick, "text" alone is any string, "message" alone appears in every error
+  // report in the case log. The verb+object pair is what carries the
+  // compose-an-interpersonal-message intent. PHRASES only ADD, so this can
+  // never displace homebuyer — it rides alongside it, which is exactly the
+  // observed correct behaviour.
+  "draft a message": "rapport",
+  "draft a text": "rapport",
+  "draft a reply": "rapport",
+  "draft a short": "rapport",
+  "draft the reply": "rapport",
+  "draft a low": "rapport", // "draft a low-pressure message"
+  "message to the": "rapport",
+  "reply to the": "rapport",
+  "respond professionally": "rapport",
+  "respond to the": "rapport",
+  "sounding text": "rapport", // "competent-sounding text"
+  "own voice": "rapport",
+  "own plain": "rapport", // "in the buyer's own plain, casual voice"
+  "casual voice": "rapport",
+  "reword": "rapport",
+  "rewrite the message": "rapport",
+  "rewrite the loan": "rapport",
+
+  // → chemistry. The bare tag `equation` was tried and measured out: it pulled
+  // chemistry onto "solve this algebra equation for x", which is education's.
+  // The VERB is the disambiguator — algebra says SOLVE an equation, chemistry
+  // says BALANCE one, and nothing else in this registry balances anything.
+  // (Keys match the STEMMED stream, so "this" is written "thi".)
+  "balance the equation": "chemicalequation",
+  "balance thi equation": "chemicalequation",
+  "balance an equation": "chemicalequation",
+  "balance my equation": "chemicalequation",
+  "balancing equation": "chemicalequation",
+  "balanced equation": "chemicalequation",
+
+  // → psychology. `development` cannot go in CONCEPTS: it is SOFTWARE
+  // development to half this registry, and mapping the bare word would route
+  // every engineering question to a psychology explainer. The qualifier is what
+  // makes it developmental psychology.
+  "child development": "developmental",
+  "childhood development": "developmental",
+  "human development": "developmental",
+  "cognitive development": "developmental",
 };
 
 // Non-compositional terms: phrases whose meaning is NOT the sum of their words.
@@ -344,6 +403,117 @@ const IDIOMS: Record<string, { canon?: string; consume: string[] }> = {
   "deployment failed": { canon: "buildstatus", consume: ["deployment"] },
   "deployment statu": { canon: "buildstatus", consume: ["deployment"] }, // "deployment status"
   "failed deployment": { canon: "buildstatus", consume: ["deployment"] },
+  // → curiosity, and CONSUME "bond" so nestegg stops answering chemistry. A
+  // chemical bond and a treasury bond are the same word, and nestegg carries
+  // BOTH `bond` and `bonds` — which the stemmer folds to one token, so the tag
+  // scores TWICE (6) plus a description hit. "what is a covalent bond" therefore
+  // routed to the retirement-investing asset at score 7 with every other asset
+  // at 0: not a near-miss, an uncontested win. Measured 2026-08-05.
+  //
+  // The bigram is the disambiguator, exactly as with "contract trading": a
+  // financial bond is municipal/treasury/corporate/junk and is ISSUED, BOUGHT and
+  // HELD; it is never covalent, ionic, or measured in angles. Do NOT generalise
+  // to the bare word — "should I hold bonds in retirement" is nestegg's and must
+  // stay that way (probe.mjs guards both senses).
+  "covalent bond": { canon: "chemicalbond", consume: ["bond"] },
+  "ionic bond": { canon: "chemicalbond", consume: ["bond"] },
+  "chemical bond": { canon: "chemicalbond", consume: ["bond"] },
+  "hydrogen bond": { canon: "chemicalbond", consume: ["bond"] },
+  "metallic bond": { canon: "chemicalbond", consume: ["bond"] },
+  "double bond": { canon: "chemicalbond", consume: ["bond"] },
+  "triple bond": { canon: "chemicalbond", consume: ["bond"] },
+  "peptide bond": { canon: "chemicalbond", consume: ["bond"] },
+  "molecular bond": { canon: "chemicalbond", consume: ["bond"] },
+  "bond angle": { canon: "chemicalbond", consume: ["bond"] },
+  "bond energy": { canon: "chemicalbond", consume: ["bond"] },
+  "bond length": { canon: "chemicalbond", consume: ["bond"] },
+  // → psychology, and CONSUME "memory" so loop stops answering questions about
+  // human recall. `memory` is loop's tag in the AGENT-memory sense, and it was
+  // winning "how does memory work and why do we forget things" outright — the
+  // cognitive-psychology asset scored 0, because psychology tags `cognition` and
+  // nobody types that. Measured 2026-08-05, same shape as the `bond` case above.
+  //
+  // NARROW BY DESIGN, and this one needed more care than `bond` because both
+  // senses are live in this registry and probe.mjs already asserts the agent
+  // sense ("how should I design memory for my AI agent" -> loop, NOT psychology).
+  // Every key below is a phrasing that only the human sense produces; the agent
+  // sense says "design/build/add memory FOR an agent", never "photographic" or
+  // "muscle" or "short term". "memory work" is the one general key — it catches
+  // the bare "how does memory work" — and the agent sense is guarded by its own
+  // probe rather than by hoping the phrase never appears.
+  "human memory": { canon: "cognition", consume: ["memory"] },
+  "memory work": { canon: "cognition", consume: ["memory"] }, // "how does memory work"
+  "memory and forgetting": { canon: "cognition", consume: ["memory"] },
+  "photographic memory": { canon: "cognition", consume: ["memory"] },
+  "muscle memory": { canon: "cognition", consume: ["memory"] },
+  "improve my memory": { canon: "cognition", consume: ["memory"] },
+  "short term memory": { canon: "cognition", consume: ["memory"] },
+  "long term memory": { canon: "cognition", consume: ["memory"] },
+  // CONSUME "video" for PRODUCTION-CRAFT questions. `video` is youtube's tag,
+  // and youtube is an ANALYTICS asset — its eleven tools are view counts,
+  // growth velocity, comments, topic clusters and demographics. Not one of them
+  // can answer "what camera settings should I use". So these questions did not
+  // fall through safely to research; they were handed to a specialist that is
+  // structurally incapable of answering, with no verifier alongside it.
+  // Measured 2026-08-05: three such queries routed to youtube alone.
+  //
+  // Consume-only, no canon: there is no video-production asset in this registry,
+  // and inventing a tag in one domain's sense is the move that keeps colliding
+  // (same reasoning as "video call" above). Dropping the token lets these reach
+  // research, which CAN answer them. If a production asset is ever added, these
+  // keys become its hooks — and `video` will need probing in both directions.
+  "camera setting": { consume: ["video"] },
+  "b roll": { consume: ["video"] },
+  "audio quality": { consume: ["video"] }, // lets elevenlabs win on `audio`
+  "color grade": { consume: ["video"] },
+  "color grading": { consume: ["video"] },
+  "colour grade": { consume: ["video"] },
+  "lighting setup": { consume: ["video"] },
+  "short film": { consume: ["video"] },
+  "film scene": { consume: ["video"] },
+  "frame a scene": { consume: ["video"] },
+  "shoot a video": { consume: ["video"] },
+  "filming a video": { consume: ["video"] },
+  // CONSUME "language" in the REGISTER sense — "explain this in plain language",
+  // "child-friendly language". linguistics carries `language` AND `languages`,
+  // which stem to one token and therefore score twice (6), so it won outright on
+  // three real caselog objectives that were about a palm tree, a medication, and
+  // diverticulitis. Nobody asking for "plain language" wants a linguist.
+  //
+  // Exactly the "body language" idiom already above, in a second sense of the
+  // same word. Consume-only: the request is about HOW TO WORD an answer, not a
+  // topic any asset owns, so dropping the token lets the real subject win.
+  "plain language": { consume: ["language"] },
+  "simple language": { consume: ["language"] },
+  "friendly language": { consume: ["language"] }, // "child-friendly language"
+  "everyday language": { consume: ["language"] },
+  "clear language": { consume: ["language"] },
+  "accessible language": { consume: ["language"] },
+  "plain english": { consume: ["language"] },
+  // → psychology, and CONSUME "attachment" so docingest (email/file attachments)
+  // stops riding attachment-theory questions. This was a PHRASES entry that
+  // ADDED `developmental` without removing the misleading token, so docingest
+  // still scored and rode along — a measured golden noise case. The comment on
+  // the old PHRASES entry already recorded that docingest outscored psychology
+  // 7-5 here; adding a concept was only half the fix.
+  "attachment theory": { canon: "developmental", consume: ["attachment"] },
+  "attachment style": { canon: "developmental", consume: ["attachment"] },
+  // → nestegg, and CONSUME "compound" so curiosity (a chemical compound) stops
+  // riding compound-interest questions. Same half-fix as attachment above: the
+  // PHRASES entry added `compounding` but left `compound` in the set, so
+  // curiosity kept scoring. Its own comment called this "a genuine pre-existing
+  // collision" — it is, and consuming is the other half.
+  "compound growth": { canon: "compounding", consume: ["compound"] },
+  "compound interest": { canon: "compoundinterest", consume: ["compound"] },
+  "compound return": { canon: "compounding", consume: ["compound"] },
+  // → education, and CONSUME "psychology". Studying FOR a psychology exam is
+  // education's; the psychology asset explains the FIELD. probe.mjs already
+  // asserts this routes to education, but psychology rode along as noise
+  // because the subject name is literally its own tag.
+  "psychology exam": { canon: "exam", consume: ["psychology"] },
+  "psychology test": { canon: "exam", consume: ["psychology"] },
+  "psychology class": { canon: "coursework", consume: ["psychology"] },
+  "psychology course": { canon: "coursework", consume: ["psychology"] },
 };
 
 /**
