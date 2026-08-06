@@ -239,6 +239,70 @@ const PROBES = [
   { q: "how do I check my account balance", mustNot: "chemistry" },
   { q: "solve this algebra equation for x", mustNot: "chemistry" },
   { q: "my molar tooth hurts when I chew", mustNot: "chemistry" },
+
+  // ── polymath's new practice families (Data & BI, AI, Leadership, Ops, SQL,
+  //    Claude Architect) ────────────────────────────────────────────────────
+  // These six were added with deep per-role content but almost no routing
+  // vocabulary, so natural phrasing either fell through to `research` or landed
+  // on whichever asset happened to own one word of the sentence. The reported
+  // symptom — "a BI question got the health expert" — reproduced exactly:
+  // "run a health check on our analytics pipeline" made HEALTHGUIDE the primary
+  // at 5 against polymath's 3. Every probe below is a measured misroute, not a
+  // hypothetical.
+
+  // SAFETY-CRITICAL, and the reason the `health` fix had to SUBTRACT rather
+  // than out-shout: healthguide carries the non-suppressible 911/988 override
+  // and must keep the bare `health` tag. These two directions are the contract.
+  { q: "run a health check on our analytics pipeline", want: "polymath", mustNot: "healthguide" },
+  { q: "how do I monitor the health of our BI stack", want: "polymath", mustNot: "healthguide" },
+  { q: "our data pipeline health is degrading overnight", want: "polymath", mustNot: "healthguide" },
+  // …and the medical sense of the same words must still reach healthguide.
+  { q: "I need a full health check up with my doctor", want: "healthguide", mustNot: "polymath" },
+  { q: "build a self management plan for histamine intolerance and DAO supplements", want: "healthguide", mustNot: "polymath" },
+  { q: "what does a high A1C result mean", want: "healthguide" },
+
+  // `index` is nestegg's (index FUND); a database index is polymath's.
+  { q: "how do I index a table for a reporting workload", want: "polymath", mustNot: "nestegg" },
+  { q: "should I add a database index or rewrite the query", want: "polymath", mustNot: "nestegg" },
+  { q: "how do index funds compare to picking stocks", want: "nestegg", mustNot: "polymath" },
+
+  // `job` is jobhunt's (employment); a scheduled unit of compute is polymath's.
+  { q: "triage a failing ETL job", want: "polymath", mustNot: "jobhunt" },
+  { q: "our nightly cron job stopped running", want: "polymath", mustNot: "jobhunt" },
+  { q: "how do I find a job in California with no degree", want: "jobhunt", mustNot: "polymath" },
+
+  // `coach` is sports'; coaching an engineer is polymath's leadership family.
+  { q: "how do I coach an engineer who is struggling", want: "polymath", mustNot: "sports" },
+  { q: "how do I coach a youth soccer team", want: "sports", mustNot: "polymath" },
+
+  // `star` is curiosity's (astronomy); a star schema is data modelling.
+  { q: "how do I set up a star schema for reporting", want: "polymath", mustNot: "curiosity" },
+  { q: "how far away is the nearest star to earth", want: "curiosity", mustNot: "polymath" },
+
+  // The six families must simply be REACHABLE from ordinary phrasing. Each of
+  // these previously fell through to `research` with no specialist at all.
+  { q: "how should I structure a semantic layer for business intelligence", want: "polymath" },
+  { q: "who owns metric definitions in a BI organization", want: "polymath" },
+  { q: "what does an engineering manager do day to day", want: "polymath" },
+  { q: "I just became a team lead, what changes", want: "polymath" },
+  { q: "what does a director of program management own", want: "polymath" },
+  { q: "how do I run a postmortem after an outage", want: "polymath" },
+  { q: "what is SRE and how is it different from ops", want: "polymath" },
+  { q: "incident triage process for an on call engineer", want: "polymath" },
+  { q: "how do I read a query execution plan", want: "polymath" },
+  { q: "when should I use a CTE versus a subquery", want: "polymath", mustNot: "education" },
+  { q: "what does a Claude architect do", want: "polymath" },
+  { q: "how should I architect an MCP server for my company", want: "polymath" },
+  // …and education's OWN sense of `cte` (career & technical education) stays put.
+  { q: "should I enroll in a CTE welding program at community college", want: "education", mustNot: "polymath" },
+
+  // The tags that were TRIED for these families and measured OUT, locked in so
+  // a later "just add the obvious tag" fails loudly instead of silently:
+  // `management` (caught "self-management plan" for a health condition),
+  // `delivery` (caught Amazon's "delivery experience"), and `reporting`
+  // (caught "credit reporting agencies"). All three now use narrower compounds.
+  { q: "why are Amazon customers unhappy with the delivery experience and price increases", mustNot: "polymath" },
+  { q: "are Experian TransUnion and Equifax the three main credit reporting agencies", mustNot: "polymath" },
 ];
 
 let pass = 0;

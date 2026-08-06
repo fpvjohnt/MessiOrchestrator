@@ -1,5 +1,6 @@
 import { displayKey } from "./match.js";
 
+import { resolveRole, renderRole } from "./roles.js";
 const clean = (s: string) => s.replace(/[\r\n"]+/g, " ").replace(/\s+/g, " ").trim();
 
 // The ~80 job titles collapse into 8 practice families. Each: what the work
@@ -60,7 +61,7 @@ export const CLUSTERS: Record<string, Cluster> = {
       "Senior Data Analyst", "Data Analytics Engineer", "Senior Business Intelligence Analyst", "Data Scientist",
       "Looker Developer", "Tableau Developer", "Tableau Systems Engineer",
       "Data Operations Manager", "Data Engineer", "Scaling and Analytics",
-      "Business Intelligence Developer", "BI Developer", "Data Analytics Developer", "Analytics Developer",
+      "Business Intelligence Developer", "BI Developer", "Data Analytics Developer", "Analytics Developer", "Data Analyst",
     ],
     what: "Turning raw data into trusted numbers leaders act on — clean models, canonical metrics, dashboards people actually believe.",
     core_tools: ["SQL", "a warehouse (BigQuery/Snowflake/Redshift)", "a transform layer (dbt or hand-rolled SQL pipelines)", "Looker/LookML or Tableau", "Python/pandas for heavier lifting", "data modeling (star schema, marts)"],
@@ -83,6 +84,13 @@ export const CLUSTERS: Record<string, Cluster> = {
       "dashboard", "tableau", "looker", "lookml", "powerbi", "sql", "query", "bigquery", "snowflake",
       "warehouse", "metric", "kpi", "report", "excel", "csv", "etl", "pipeline", "chart", "viz", "dbt", "database",
       "dataops",
+      // The SQL-craft half. The family answer already covers "build a dashboard",
+      // but the SQL Expert deep-dive underneath it was unreachable from the way
+      // people actually ask: "when should I use a CTE versus a subquery" and
+      // "how do I index a table" both scored zero and returned no cluster.
+      "cte", "subquery", "index", "indexing", "join", "schema", "semantic",
+      "partition", "aggregation", "denormalize", "normalization", "optimizer",
+      "executionplan", "queryplan", "analytic", "operation", "elt", "star",
     ],
   },
   cloud_infra: {
@@ -116,6 +124,11 @@ export const CLUSTERS: Record<string, Cluster> = {
       "lambda", "serverless", "dns", "vpn", "gpu", "deploy", "devops", "linux", "nginx", "prometheus", "grafana",
       "network", "capacity", "efficiency", "latency", "throughput", "utilization", "scaling",
       "datacenter", "rack", "supplychain", "logistics",
+      // The RELIABILITY half. "what is SRE and how is it different from ops"
+      // scored zero on every cluster — the two words the question is entirely
+      // about were not vocabulary anywhere.
+      "sre", "ops", "reliability", "uptime", "downtime", "sla", "slo", "oncall",
+      "rotation", "autoscaling", "loadbalancer", "provisioning", "finops",
     ],
   },
   security_trust_forensics: {
@@ -160,7 +173,7 @@ export const CLUSTERS: Record<string, Cluster> = {
       "Application Support Senior Analyst", "Senior Technical Solutions Manager", "Software Engineer",
       "Senior Systems Analyst", "System Engineer", "Senior Systems Production Engineer", "Senior Media Technology Engineer",
       "Staff Software Engineer", "Support Engineer", "Developer Productivity Engineer",
-      "Messenger Integrations Engineer", "Integrations Engineer", "Applications Engineer",
+      "Messenger Integrations Engineer", "Integrations Engineer", "Applications Engineer", "Slack Power User / Expert", "Workspace Administrator",
     ],
     what: "Keeping the systems people depend on running, gluing systems together, and being the escalation point when something breaks — your own strongest lane today.",
     core_tools: ["ITSM/ticketing (ServiceNow, Jira)", "API integration", "scripting (Python/PowerShell/Bash)", "monitoring/alerting", "media/production pipeline tools where relevant"],
@@ -184,6 +197,14 @@ export const CLUSTERS: Record<string, Cluster> = {
       "error", "bluescreen", "bsod", "reboot", "restart", "install", "update", "driver", "printer", "wifi",
       "outlook", "office", "servicenow", "ticket", "troubleshoot", "app", "sync", "registry",
       "productivity", "tooling", "devex", "devtools", "integration", "messenger", "webhook",
+      // The RELEASE-and-recover half, which the GitHub Actions Expert role
+      // underneath this family depends on. "how do I run a postmortem after an
+      // outage" and "our deployment pipeline keeps failing" reached no cluster
+      // and the wrong one respectively.
+      // NOTE: `incident` is deliberately absent — security_trust_forensics owns
+      // it (incident response), and `postmortem`/`outage` carry the ops sense.
+      "postmortem", "outage", "rollback", "deployment", "cicd", "githubaction",
+      "runbook", "recovery", "release", "regression", "hotfix", "github", "action",
     ],
   },
   leadership_delivery: {
@@ -191,6 +212,7 @@ export const CLUSTERS: Record<string, Cluster> = {
     titles: [
       "Project Manager", "Business System Analyst", "Product Architect", "Technical Leader",
       "Program Manager", "Research Operations", "Research Operations Manager",
+      "Engineering Manager", "Director of Program Management", "Technical Program Manager",
     ],
     what: "Translating business needs into technical plans and driving delivery across teams — less hands-on-keyboard, more making sure the right thing gets built.",
     core_tools: ["Jira/Confluence", "roadmapping", "requirements gathering", "architecture diagramming", "stakeholder communication"],
@@ -213,6 +235,20 @@ export const CLUSTERS: Record<string, Cluster> = {
       "roadmap", "stakeholder", "requirement", "scope", "budget", "deadline", "meeting", "presentation",
       "pitch", "proposal", "prioritize", "agile", "scrum", "sprint", "okr", "adr", "milestone", "sell",
       "buyin", "leadership", "sponsor", "approve", "approval", "approved", "researchops", "coordination",
+      // The PEOPLE half of the family. Every word above is about a PLAN; none is
+      // about the humans executing it, so "what does an engineering manager do
+      // day to day", "I just became a team lead" and "how do I give feedback to
+      // an underperforming engineer" all scored zero here and returned no
+      // cluster at all. `manager`, `engineer` and `analyst` cannot fix it —
+      // build.ts zeroes any word appearing in half the clusters, and all three
+      // do. These are the words only this family uses.
+      // NOTE: `report` is deliberately absent — data_bi owns it (a BI report),
+      // and a direct report is reached via `directreport`/`delegate` instead.
+      "lead", "manage", "managing", "delegate", "delegation", "directreport",
+      "mentor", "mentoring", "coaching", "feedback", "underperform", "underperforming",
+      "underperformer", "headcount", "staffing", "resourcing", "onboarding",
+      "morale", "attrition", "promote", "standup", "retrospective", "escalate",
+      "escalation", "crossfunctional", "deliverable", "delivery", "timeline",
     ],
   },
   ai_safety_frontier: {
@@ -387,6 +423,14 @@ export function resolveCluster(input: string): string | undefined {
 }
 
 export function dayInTheLife(cluster?: string): string {
+  // A title with its OWN deep dive answers as itself. Checked before the
+  // cluster resolver, which would otherwise swallow "Looker Developer" into
+  // Data & BI and return generic SQL/warehouse advice — true of the family,
+  // and not what the job is.
+  if (cluster) {
+    const role = resolveRole(cluster);
+    if (role) return renderRole(role);
+  }
   if (!cluster) {
     return (
       `THE 8 PRACTICE FAMILIES — every position named collapses into these:\n\n` +

@@ -56,6 +56,13 @@ const CONCEPTS: Record<string, string[]> = {
   // youtube asset leaves `viral` untagged for the mirror-image reason. Neither
   // side gets it; the specific symptom noun carries the meaning instead.
   symptom: ["cough", "fever", "nausea", "rash", "wheezing", "congestion", "dizziness"],
+  // healthguide 'insulin' — the same shape a third time. healthguide tags the
+  // HORMONE; a patient reads a lab report and types the MARKER. "what does a
+  // high A1C result mean" scored 0 on healthguide and fell through to research,
+  // so the asset carrying the 911/988 override never saw a diabetes question.
+  // Only unambiguous lab-marker names go here — none is a word any other asset
+  // uses in a different sense.
+  insulin: ["a1c", "hba1c", "glucose", "prediabetic", "prediabetes"],
   // nestegg 'crypto'
   crypto: ["coin", "bitcoin"],
   // polymath 'sql' — "turn my database into a report". Unambiguously technical,
@@ -93,6 +100,15 @@ const CONCEPTS: Record<string, string[]> = {
   // textbook Asch question and it scored 0 on psychology. `conform` is
   // unclaimed by every other asset.
   conformity: ["conform", "conforming", "conformed"],
+  // polymath 'query'. `cte` is EDUCATION's tag (Career & Technical Education,
+  // beside `vocational` and `welding`) and cannot be claimed here — but in SQL
+  // the same three letters are a Common Table Expression, and education rode
+  // along on "when should I use a CTE versus a subquery" at a dead 3-3 tie.
+  // `subquery` is unambiguously SQL in every domain in this registry, so it
+  // corroborates a second polymath tag and breaks the tie without touching
+  // education's `cte`. "Enroll in a CTE welding program" contains none of these
+  // and is untouched — see the probes locking BOTH directions in probe.mjs.
+  query: ["subquery", "queryplan", "executionplan"],
 };
 
 // Multi-word concepts. The KEY is the phrase as the query says it, in
@@ -286,6 +302,30 @@ const PHRASES: Record<string, string> = {
   // development to half this registry, and mapping the bare word would route
   // every engineering question to a psychology explainer. The qualifier is what
   // makes it developmental psychology.
+  // → polymath's leadership family. `feedback` is communication's and stays
+  // that way — delivering the message IS communication's job. But WHO to give
+  // it to and what to do about sustained underperformance is the engineering
+  // manager's, and polymath scored 1 against communication's 4 on "how do I
+  // give feedback to an underperforming engineer". These phrases add the
+  // leadership signal so both are assigned; nothing is consumed, so
+  // communication keeps the cases that are purely about wording.
+  // → polymath. `cte` is EDUCATION's tag (Career & Technical Education — it
+  // sits beside `vocational` and `welding` in that registry entry) and cannot
+  // be claimed here. In SQL the same three letters are a Common Table
+  // Expression, and education rode along on "when should I use a CTE versus a
+  // subquery". Nothing is consumed — education keeps `cte` — these phrases just
+  // add a SECOND polymath signal so it clears the leader by enough that
+  // education falls under the secondary ratio. "Enroll in a CTE welding
+  // program" contains none of them and is untouched.
+  "common table expression": "query",
+
+  "underperforming engineer": "leadership",
+  "struggling engineer": "leadership",
+  "underperforming developer": "leadership",
+  "underperforming report": "leadership",
+  "poor performer": "leadership",
+  "performance improvement plan": "leadership",
+
   "child development": "developmental",
   "childhood development": "developmental",
   "human development": "developmental",
@@ -514,6 +554,62 @@ const IDIOMS: Record<string, { canon?: string; consume: string[] }> = {
   "psychology test": { canon: "exam", consume: ["psychology"] },
   "psychology class": { canon: "coursework", consume: ["psychology"] },
   "psychology course": { canon: "coursework", consume: ["psychology"] },
+  // → polymath, and CONSUME "health". This is the collision the operator
+  // actually hit: "run a health check on our analytics pipeline" routed to
+  // HEALTHGUIDE as the primary (5 vs polymath's 3) — a BI/ops question answered
+  // by the medical asset. healthguide legitimately owns the bare tag `health`
+  // and must keep it (it carries the non-suppressible 911/988 override), so the
+  // fix has to subtract on the technical side. Consume only where the object of
+  // the health is a SYSTEM; a person's health never appears in these shapes.
+  // Adding a `healthcheck` compound tag alone was measured insufficient —
+  // healthguide's description prose kept it above the 0.6 secondary ratio.
+  // NOTE the trailing preposition on the "health check" keys. The bare bigram
+  // "health check" was tried first and FAILED the probe gate: "I need a full
+  // health check up with my doctor" is a medical phrase using the identical two
+  // words, and consuming `health` there pulled polymath onto a doctor question.
+  // A health check that has an OBJECT ("...check ON our pipeline") is the ops
+  // sense; a check-up does not take one. One preposition is the whole boundary.
+  "health check on": { canon: "troubleshoot", consume: ["health"] },
+  "health check of": { canon: "troubleshoot", consume: ["health"] },
+  "health check against": { canon: "troubleshoot", consume: ["health"] },
+  "health of our": { canon: "troubleshoot", consume: ["health"] },
+  "monitor the health": { canon: "troubleshoot", consume: ["health"] },
+  "pipeline health": { canon: "troubleshoot", consume: ["health"] },
+  "data health": { canon: "troubleshoot", consume: ["health"] },
+  "system health": { canon: "troubleshoot", consume: ["health"] },
+  "service health": { canon: "troubleshoot", consume: ["health"] },
+  "cluster health": { canon: "troubleshoot", consume: ["health"] },
+  "code health": { canon: "troubleshoot", consume: ["health"] },
+  // → polymath SQL, and CONSUME "index". nestegg owns `index` in the INDEX FUND
+  // sense and outscored polymath 4-0 on "how do I index a table for a reporting
+  // workload". A database index is a verb-with-an-object; a fund index is not,
+  // so the object is the disambiguator. Do NOT generalise to the bare word.
+  // → polymath, and CONSUME "job". jobhunt owns `job` in the EMPLOYMENT sense
+  // and won "triage a failing ETL job" outright. A scheduled unit of compute is
+  // not a career; only the compute-qualified bigrams are consumed, so "how do I
+  // find a job" is untouched.
+  "etl job": { canon: "etl", consume: ["job"] },
+  "cron job": { canon: "runbook", consume: ["job"] },
+  "batch job": { canon: "dataops", consume: ["job"] },
+  "build job": { canon: "deploy", consume: ["job"] },
+  "job fail": { canon: "troubleshoot", consume: [] },
+  "index a table": { canon: "query", consume: ["index"] },
+  "index thi table": { canon: "query", consume: ["index"] },
+  "index the table": { canon: "query", consume: ["index"] },
+  "database index": { canon: "query", consume: ["index"] },
+  "add an index": { canon: "query", consume: ["index"] },
+  "missing index": { canon: "query", consume: ["index"] },
+  // → polymath leadership, and CONSUME "coach". sports owns `coach` and won
+  // "how do I coach an engineer who is struggling" outright (3 vs polymath 1).
+  // Only the engineering-report objects are consumed: "coach my team" is left
+  // alone precisely because it is far more likely to be a soccer team.
+  "coach an engineer": { canon: "leadership", consume: ["coach"] },
+  "coach a developer": { canon: "leadership", consume: ["coach"] },
+  "coach an underperformer": { canon: "leadership", consume: ["coach"] },
+  "coach my report": { canon: "leadership", consume: ["coach"] },
+  "coach my direct report": { canon: "leadership", consume: ["coach"] },
+  "coach a direct report": { canon: "leadership", consume: ["coach"] },
+  "coaching an engineer": { canon: "leadership", consume: ["coach", "coaching"] },
 };
 
 /**

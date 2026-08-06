@@ -1,4 +1,5 @@
 import { CLUSTERS, resolveCluster } from "./clusters.js";
+import { resolveRole } from "./roles.js";
 import { matchClusters } from "./build.js";
 import { matchFoundations, foundationLabel } from "./foundations.js";
 import type { WorkContext } from "./context-store.js";
@@ -24,6 +25,23 @@ export function askTheExpert(rawQuestion: string, ctx: WorkContext, expertHint?:
   const matched = hinted
     ? [hinted]
     : matchClusters(question).slice(0, 2).map((m) => m.key);
+
+  // Last resort before giving up: the question may NAME a role outright even
+  // though it carries no cluster vocabulary. "what does an engineering manager
+  // do day to day" is the case that exposed this — build.ts zeroes any word
+  // appearing in half the clusters, and `manager`, `engineer` and `analyst` all
+  // do, so the two words the question is entirely about score nothing and the
+  // user got "couldn't tell which specialist this belongs to" for a title this
+  // server has a hand-written deep dive on. resolveRole matches the title
+  // inside the sentence, so the role's own cluster answers instead.
+  //
+  // Deliberately AFTER matchClusters, never before: a question that has real
+  // vocabulary should route on its subject, not on a job title mentioned in
+  // passing ("as a data analyst, how do I secure my laptop" is systems_support).
+  if (matched.length === 0) {
+    const named = resolveRole(question);
+    if (named?.cluster && CLUSTERS[named.cluster]) matched.push(named.cluster);
+  }
 
   if (matched.length === 0) {
     return [

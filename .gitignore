@@ -54,3 +54,8 @@ dashboard/cache/
 # youtube-mcp runtime state: the quota ledger, view-count snapshots and HTTP
 # cache. Machine-local and recreated on first run.
 youtube-mcp/.cache/
+
+# Bridge/supervisor runtime logs. Machine-local, append-only and large (the
+# rotated supervisor.log.1 alone reaches multiple MB), and they record local
+# host/port and tunnel connector detail that has no business in the repo.
+logs/
