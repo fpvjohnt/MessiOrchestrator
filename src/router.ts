@@ -356,10 +356,16 @@ const WORDING_VERBS_NEEDING_NOUN = new Set(["write", "send"]);
 // predicate on "what voice options does the text to speech api support" — a
 // false positive caught by probe.mjs before it shipped, which is the reason the
 // two tiers exist. Weak nouns count only when a wording VERB is also present.
+// `response` was STRONG and should never have been: it is an HTTP response to
+// half this registry and openai's own tag besides, so it made "write a function
+// that returns the response body" and "send the response back to the client" into
+// wording tasks. It is the most overloaded word here. Demoted to WEAK, where it
+// still works with a real wording verb ("reply to his response") but cannot
+// carry an objective on its own.
 const STRONG_MESSAGE_NOUNS = new Set([
-  "message", "reply", "response", "email", "note", "letter",
+  "message", "reply", "email", "note", "letter",
 ]);
-const WEAK_MESSAGE_NOUNS = new Set(["text", "voice", "tone", "wording"]);
+const WEAK_MESSAGE_NOUNS = new Set(["text", "voice", "tone", "wording", "response"]);
 const MESSAGE_NOUNS = new Set([...STRONG_MESSAGE_NOUNS, ...WEAK_MESSAGE_NOUNS]);
 
 /**
@@ -377,8 +383,13 @@ export function needsWordingHelp(objective: string): boolean {
   const tokens = tokenize(objective);
   const hasVerb = tokens.some((t) => WORDING_VERBS.has(t));
   // Verb + object: "draft a text", "rewrite the message in his own voice".
+  // / are ordinary engineering verbs, so they need a STRONG noun —
+  // "write an email" is a wording task, "write text to a file" and "write a unit
+  // test for the voice cloning endpoint" are not. Only the real wording verbs
+  // (draft/reword/rephrase/word/…) may be satisfied by a WEAK noun.
   const hasNounOnlyVerb = tokens.some((t) => WORDING_VERBS_NEEDING_NOUN.has(t));
-  if ((hasVerb || hasNounOnlyVerb) && tokens.some((t) => MESSAGE_NOUNS.has(t))) return true;
+  if (hasVerb && tokens.some((t) => MESSAGE_NOUNS.has(t))) return true;
+  if (hasNounOnlyVerb && tokens.some((t) => STRONG_MESSAGE_NOUNS.has(t))) return true;
   const lead = tokens.slice(0, 3);
   // A wording verb in imperative position makes the WHOLE objective a wording
   // task, even with no noun for it to act on — "Help John respond professionally

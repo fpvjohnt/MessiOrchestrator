@@ -67,23 +67,45 @@ export async function pinnedFetch(
           chunks.push(c);
           total += c.length;
         });
-        res.on("end", () => {
+        // `end` does NOT fire after res.destroy(), and there was no `close`
+        // handler — so hitting maxBytes left this Promise permanently unsettled.
+        // Not a 15s error: the abort fires and nothing listens, so the caller
+        // hangs forever and leaks the socket. `truncated: true` was unreachable
+        // dead code. research.ts auto-fetches every search result through
+        // Promise.allSettled, so one oversized page wedged the fallback asset
+        // that rides most of this system's traffic.
+        //
+        // `close` fires on BOTH paths — normal end and destroy — so settling
+        // there covers both, and settle() guards against the double-call.
+        let settled = false;
+        const settle = () => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timer);
           let body = Buffer.concat(chunks);
           const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
           if (!truncated) {
             try {
-              if (enc.includes("br")) body = brotliDecompressSync(body);
-              else if (enc.includes("gzip")) body = gunzipSync(body);
-              else if (enc.includes("deflate")) body = inflateSync(body);
+              // maxOutputLength or this is a decompression bomb: 194 KB of gzip
+              // expands to 200 MB, comfortably inside the 1.5 MB wire cap that
+              // was doing all the work here. These are the *Sync variants, so
+              // the expansion also blocks the MCP server's event loop for its
+              // whole duration. zlib enforces the cap and throws; the existing
+              // catch then leaves the body raw, which is the right outcome.
+              const opts = { maxOutputLength: maxBytes };
+              if (enc.includes("br")) body = brotliDecompressSync(body, opts);
+              else if (enc.includes("gzip")) body = gunzipSync(body, opts);
+              else if (enc.includes("deflate")) body = inflateSync(body, opts);
             } catch {
-              /* leave raw if decompression fails */
+              /* leave raw if decompression fails or exceeds the cap */
             }
           }
           const headers = new Map<string, string>();
           for (const [k, v] of Object.entries(res.headers)) headers.set(k.toLowerCase(), Array.isArray(v) ? v.join(", ") : String(v ?? ""));
           resolve({ status: res.statusCode ?? 0, headers, finalUrl: url.toString(), hostname: url.hostname, body, truncated });
-        });
+        };
+        res.on("end", settle);
+        res.on("close", settle);
         res.on("error", fail);
       }
     );

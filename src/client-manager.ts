@@ -1,5 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { checkAssetSafety } from "./asset-safety.js";
+import { PROJECT_ROOT } from "./paths.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { AssetConfig } from "./types.js";
 import { describeUnknownTool } from "./tool-suggest.js";
@@ -78,6 +80,17 @@ async function establishConnection(asset: AssetConfig, evict: () => void): Promi
     if (asset.transport === "stdio") {
       if (!asset.command) {
         throw new Error(`Asset "${asset.name}" uses stdio transport but has no command configured.`);
+      }
+      // Defence in depth. recruit_asset validates before WRITING, this
+      // validates before SPAWNING — the registry is a plain JSON file that a
+      // backup restore, a hand edit, or a future tool could put an arbitrary
+      // command into, and the check that matters is the one adjacent to the
+      // spawn. Refusing here costs one function call per cold connect.
+      const issues = checkAssetSafety(asset, PROJECT_ROOT);
+      if (issues.length > 0) {
+        throw new Error(
+          `refused to launch "${asset.name}": ${issues.map((i) => `${i.field} ${i.problem}`).join("; ")}`
+        );
       }
       // Harden GUI launches (Claude Desktop): a bare "node" command relies on
       // "node" being on the spawned process's PATH, which is not guaranteed when

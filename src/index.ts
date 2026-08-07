@@ -10,6 +10,8 @@ import { checkAssets, checkSelf, renderHealth } from "./health.js";
 import { contextGaps, expectsDecision, renderGaps } from "./context-gaps.js";
 import { synthesizeCase, renderOutcome } from "./synthesis.js";
 import type { AssetConfig } from "./types.js";
+import { checkAssetSafety } from "./asset-safety.js";
+import { PROJECT_ROOT } from "./paths.js";
 import { resolve } from "node:path";
 import { stat } from "node:fs/promises";
 
@@ -188,6 +190,18 @@ server.registerTool(
       }
       if (transport === "http" && !url) {
         throw new Error('transport "http" requires a url.');
+      }
+      // recruit_asset persists a command that the client manager later SPAWNS,
+      // and this tool is reachable through the HTTP bridge and the tunnel. It
+      // is therefore an RCE primitive unless the command is constrained — and
+      // it does not take a human attacker, because the orchestrator's own model
+      // calls this tool, so a prompt injection in any fetched page can reach it.
+      // Allowlist, not denylist; see asset-safety.ts for why.
+      const issues = checkAssetSafety({ transport, command, args, cwd, env }, PROJECT_ROOT);
+      if (issues.length > 0) {
+        throw new Error(
+          `refused to recruit "${name}": ${issues.map((i) => `${i.field} ${i.problem}`).join("; ")}`
+        );
       }
       const cleanTags = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
       const asset: AssetConfig = {

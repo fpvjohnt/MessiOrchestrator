@@ -129,7 +129,21 @@ async function loadCases(name) {
 async function main() {
   // Standalone `npm run caselog` has no build step — warn if dist is behind src.
   await warnIfStaleBuild(fileURLToPath(new URL(".", import.meta.url)));
-  const registry = JSON.parse(await readFile(new URL("./data/registry.json", import.meta.url), "utf-8"));
+  // data/registry.json is gitignored on the same grounds as cases.json — it is
+  // recreated from registry.example.json by `npm run setup`. So on the very
+  // fresh clone this file's SKIPPED branch was written for, this read threw an
+  // unhandled ENOENT and exited 1 BEFORE the branch could run. The fix did not
+  // survive the situation it was written for. Name the cause instead.
+  let registry;
+  try {
+    registry = JSON.parse(await readFile(new URL("./data/registry.json", import.meta.url), "utf-8"));
+  } catch (err) {
+    if (err?.code !== "ENOENT") throw err;
+    console.log(`\nREAL-TRAFFIC ROUTING — skipped: data/registry.json does not exist.`);
+    console.log(`It is gitignored and recreated from data/registry.example.json.`);
+    console.log(`Run 'npm run setup' first, then re-run this.`);
+    return;
+  }
   const all = [...(await loadCases("cases.json")), ...(await loadCases("cases-archive.json"))];
 
   const cases = [];
@@ -149,6 +163,19 @@ async function main() {
     console.log(`\nREAL-TRAFFIC ROUTING — no scoreable cases in the local case log.`);
     console.log(`  Excluded: ${skippedProbe} probe/smoke objective(s), ${skippedEmpty} case(s) with no successful call.`);
     console.log(``);
+    // These two are NOT the same situation and must not print the same words.
+    // An empty log is a fresh clone; a log full of cases whose every call
+    // FAILED is a total outage — and the first version of this branch reported
+    // the outage as "a fresh clone has nothing to measure yet" and exited 0,
+    // turning the loudest possible signal into a green gate. Over half the live
+    // corpus already lands in `skippedEmpty`, so this is not a corner case.
+    if (all.length > 0 && skippedEmpty > 0) {
+      console.log(`NOT a fresh clone: ${all.length} case(s) exist but NONE has a successful`);
+      console.log(`asset call, so there is no ground truth to score against. That usually`);
+      console.log(`means the assets were failing, not that routing is fine. Investigate`);
+      console.log(`before trusting a green suite — check 'npm run health'.`);
+      process.exit(1);
+    }
     console.log(`SKIPPED, not failed. data/cases.json is gitignored — the orchestrator`);
     console.log(`writes it as you use it — so a fresh clone has nothing to measure yet.`);
     console.log(`Open a few cases and re-run to get a real-traffic number.`);
