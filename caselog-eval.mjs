@@ -60,40 +60,67 @@ export const DEV_TEST =
  * Otherwise the PROXY: assets that produced at least one call that did not fail.
  * A failed call is not evidence the router chose well.
  */
-// These are the CURRENT MEASURED BASELINE minus a small margin, not a target
-// and not an aspiration. The job of these two numbers is to fail when a change
-// makes real-traffic routing WORSE than it is right now. Raise these floors
-// when the real number moves, and never the other way round.
+// CURRENT MEASURED BASELINE plus a small margin (ceilings) or minus one
+// (floors), not targets and not aspirations. The job of these numbers is to
+// fail when a change makes real-traffic routing WORSE than it is right now.
+// Move them only in the stricter direction unless the instrument itself was
+// wrong — as it was; see realTrafficGate() for the noise rewrite.
 export const COVERAGE_FLOOR = 0.65;
-export const NOISE_CEILING = 0.45;
+
+// The OLD single `noise` metric was a broken instrument, and it is worth being
+// precise about how. It counted "assigned but never tasked" over EVERY assigned
+// asset — including assets the case never OFFERED to the router. But task_asset
+// refuses a call to an unassigned asset, so an asset that was not offered COULD
+// NOT have been tasked no matter how good the routing was. Measured on the live
+// log, 21.7% of all assignments fell in that impossible-to-score bucket, so the
+// 46% the gate reported was almost half arithmetic that no routing change could
+// ever move. It also drifted with plain log growth (46.3 -> 46.0 -> 46.1 across
+// a week of no relevant change), which is the signature of a metric measuring
+// the corpus rather than the router.
+//
+// Two honest numbers replace it:
+//
+//   SCOREABLE noise — of the assignments the case ACTUALLY OFFERED (so
+//   task_asset would have permitted them), the fraction that went unused. This
+//   is the real "did the router over-assign" question. Measured 31.6% today.
+//
+//   UNTASKABLE share — the fraction of all assignments that were never offered.
+//   This is mostly structural (a newly-tagged asset assigned to old cases that
+//   predate it), so it is NOT a quality signal on its own — but a change that
+//   suddenly over-assigns brand-new territory WILL push it up, which is the one
+//   thing the scoreable metric alone is blind to. It is a tripwire, not a
+//   grade. Measured 21.7% today.
+//
+// Both ceilings sit a few points above today's measurement: tight enough that a
+// real regression trips, loose enough that ordinary log growth does not.
+export const SCOREABLE_NOISE_CEILING = 0.36; // measured 31.6%
+export const UNTASKABLE_SHARE_CEILING = 0.27; // measured 21.7%
 
 /**
- * The real-traffic gate decision, as a pure function so the zero-case branch is
- * actually TESTABLE rather than asserted by hand. Returns one of:
- *   { status: "skipped" }                  nothing to measure
- *   { status: "ok",     problems: [] }     within both bounds
- *   { status: "failed", problems: [...] }  a bound was breached
+ * The real-traffic gate decision, as a pure function so every branch — the
+ * zero-case skip especially — is TESTABLE rather than asserted by hand.
+ * Returns { status: "skipped" | "ok" | "failed", problems: string[] }.
  *
  * WHY "skipped" exists, and why it is not cosmetic. `data/cases.json` is
  * gitignored — the orchestrator writes it as you use it — so a FRESH CLONE has
- * no case log at all. Coverage then computed as 0/0 -> 0, tripped the 65%
- * floor, and exited 1. That is a lie: an absent case log means "nothing to
- * measure", not "routing got worse".
- *
- * And it was not harmless. `npm run check` chains its stages with &&, so a
- * caselog exit(1) SILENTLY SKIPPED every stage after it — which included
- * `npm run probe`, the out-of-set collision gate. A new contributor's very
- * first `check` therefore never ran the gate guarding the neighbouring-domain
- * boundaries (health/job/index/coach/star). The stage order in package.json is
- * now probe-before-caselog for the same reason: an ADVISORY real-traffic
- * measurement must never be able to suppress a correctness gate.
+ * no case log at all. Scoring 0/0 -> 0 tripped the coverage floor and exited 1.
+ * That is a lie: an absent log means "nothing to measure", not "routing got
+ * worse". And it was not harmless — `npm run check` chains stages with &&, so a
+ * caselog exit(1) SILENTLY SKIPPED `npm run probe`, the out-of-set collision
+ * gate. The stage order is now probe-before-caselog for the same reason: an
+ * advisory real-traffic measurement must never suppress a correctness gate.
  */
-export function realTrafficGate({ caseCount, coverage, noise }) {
+export function realTrafficGate({ caseCount, coverage, scoreableNoise, untaskableShare }) {
   if (!caseCount) return { status: "skipped", problems: [] };
   const pct = (n) => `${(n * 100).toFixed(0)}%`;
   const problems = [];
   if (coverage < COVERAGE_FLOOR) problems.push(`coverage ${pct(coverage)} < ${pct(COVERAGE_FLOOR)}`);
-  if (noise > NOISE_CEILING) problems.push(`noise ${pct(noise)} > ${pct(NOISE_CEILING)}`);
+  if (scoreableNoise > SCOREABLE_NOISE_CEILING) {
+    problems.push(`scoreable-noise ${pct(scoreableNoise)} > ${pct(SCOREABLE_NOISE_CEILING)}`);
+  }
+  if (untaskableShare > UNTASKABLE_SHARE_CEILING) {
+    problems.push(`untaskable-share ${pct(untaskableShare)} > ${pct(UNTASKABLE_SHARE_CEILING)}`);
+  }
   return { status: problems.length ? "failed" : "ok", problems };
 }
 
@@ -102,8 +129,13 @@ export function expectedForCase(c) {
   if (!objective) return { skip: "no-objective" };
   if (PROBE.test(objective) || DEV_TEST.test(objective)) return { skip: "probe" };
 
+  // `offered` = the assets this case actually assigned at the time, i.e. the
+  // ones task_asset would have permitted a call to. It is what separates
+  // scoreable noise from the impossible-to-score kind; see the ceiling notes.
+  const offered = Array.isArray(c.assignedAssets) ? c.assignedAssets : [];
+
   if (Array.isArray(c.shouldHaveRouted) && c.shouldHaveRouted.length) {
-    return { objective, expected: c.shouldHaveRouted, source: "label" };
+    return { objective, expected: c.shouldHaveRouted, source: "label", offered };
   }
 
   const used = new Set();
@@ -114,7 +146,7 @@ export function expectedForCase(c) {
     used.add(e.asset);
   }
   if (used.size === 0) return { skip: "empty" };
-  return { objective, expected: [...used], source: "proxy" };
+  return { objective, expected: [...used], source: "proxy", offered };
 }
 
 async function loadCases(name) {
@@ -184,7 +216,10 @@ async function main() {
 
   let fullyCovered = 0;
   let predictedTotal = 0;
-  let predictedUnused = 0;
+  let predictedUnused = 0; // legacy: unused over ALL predicted (kept for the printout only)
+  let offeredPredicted = 0; // predicted AND offered to the case — the scoreable denominator
+  let offeredUnused = 0; // …of those, the ones that went unused: scoreable noise
+  let untaskable = 0; // predicted but never offered — could not have been tasked
   const misses = [];
 
   let labelled = 0;
@@ -192,22 +227,33 @@ async function main() {
     if (c.source === "label") labelled++;
     const predicted = selectAssets(c.objective, registry).assigned;
     const missing = c.expected.filter((a) => !predicted.includes(a));
-    const unused = predicted.filter((a) => !c.expected.includes(a));
     predictedTotal += predicted.length;
-    predictedUnused += unused.length;
+    for (const a of predicted) {
+      const used = c.expected.includes(a);
+      if (!used) predictedUnused++;
+      if (c.offered.includes(a)) {
+        offeredPredicted++;
+        if (!used) offeredUnused++;
+      } else {
+        untaskable++;
+      }
+    }
     if (missing.length === 0) fullyCovered++;
     else misses.push({ objective: c.objective, expected: c.expected, predicted, missing, source: c.source });
   }
 
   const coverage = cases.length ? fullyCovered / cases.length : 0;
-  const noise = predictedTotal ? predictedUnused / predictedTotal : 0;
+  const scoreableNoise = offeredPredicted ? offeredUnused / offeredPredicted : 0;
+  const untaskableShare = predictedTotal ? untaskable / predictedTotal : 0;
 
   const pct = (n) => `${(n * 100).toFixed(0)}%`;
   console.log(`\nREAL-TRAFFIC ROUTING — ${cases.length} cases from the live case log`);
   console.log(`  Excluded: ${skippedProbe} probe/smoke objective(s), ${skippedEmpty} case(s) with no successful call.`);
   console.log(``);
-  console.log(`  Coverage (expected assets that were assigned):  ${fullyCovered}/${cases.length}  ${pct(coverage)}`);
-  console.log(`  Noise    (assigned assets that were never used): ${predictedUnused}/${predictedTotal}  ${pct(noise)}`);
+  console.log(`  Coverage (expected assets that were assigned):     ${fullyCovered}/${cases.length}  ${pct(coverage)}`);
+  console.log(`  Scoreable noise (offered but unused):              ${offeredUnused}/${offeredPredicted}  ${pct(scoreableNoise)}  (ceiling ${pct(SCOREABLE_NOISE_CEILING)})`);
+  console.log(`  Untaskable share (predicted, never offered):       ${untaskable}/${predictedTotal}  ${pct(untaskableShare)}  (ceiling ${pct(UNTASKABLE_SHARE_CEILING)})`);
+  console.log(`  [for reference, the old confounded noise number:   ${predictedUnused}/${predictedTotal}  ${pct(predictedTotal ? predictedUnused / predictedTotal : 0)}]`);
   console.log(``);
   console.log(
     labelled > 0
@@ -244,14 +290,18 @@ async function main() {
   // honest coverage number is much lower than the golden set's — that gap is
   // the finding, not a bug in this file: golden questions are short and
   // self-authored, real objectives are long and messy.
-  const verdict = realTrafficGate({ caseCount: cases.length, coverage, noise });
+  const verdict = realTrafficGate({ caseCount: cases.length, coverage, scoreableNoise, untaskableShare });
 
   console.log(``);
   if (verdict.status === "failed") {
     console.log(`REAL-TRAFFIC GATE FAILED: ${verdict.problems.join(" | ")}`);
     process.exit(1);
   }
-  console.log(`Real-traffic gate OK: coverage ${pct(coverage)} >= ${pct(COVERAGE_FLOOR)} | noise ${pct(noise)} <= ${pct(NOISE_CEILING)}.`);
+  console.log(
+    `Real-traffic gate OK: coverage ${pct(coverage)} >= ${pct(COVERAGE_FLOOR)} | ` +
+      `scoreable-noise ${pct(scoreableNoise)} <= ${pct(SCOREABLE_NOISE_CEILING)} | ` +
+      `untaskable-share ${pct(untaskableShare)} <= ${pct(UNTASKABLE_SHARE_CEILING)}.`
+  );
 }
 
 // Self-execute only when run directly (node caselog-eval.mjs). Importing the
