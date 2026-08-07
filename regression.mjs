@@ -10,7 +10,7 @@
 // test reads CLUSTERS, so every title you add is automatically checked.
 
 import { readFile, readdir, mkdtemp, writeFile, utimes, rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // The cross-process advisory lock around data/*.json. acquireCrossProcessLock
@@ -21,7 +21,7 @@ import { withFileLock, acquireCrossProcessLock } from "./dist/file-lock.js";
 // Case-archiving selection. Pure by construction — archive-cases.mjs itself
 // runs on import, so the logic has to live apart from it to be testable at all.
 import { isArchivable, partitionCases, mergeArchive, analyzeStore, suggestCutoffs } from "./archive-logic.mjs";
-import { expectedForCase, PROBE } from "./caselog-eval.mjs";
+import { expectedForCase, PROBE, realTrafficGate, COVERAGE_FLOOR, NOISE_CEILING } from "./caselog-eval.mjs";
 // The one .env parser the bridge and supervisor share. They disagreeing about a
 // setting is what made MCP_BRIDGE_PORT a false-outage generator.
 import { parseEnv, applyEnv } from "./bridge/load-env.mjs";
@@ -789,6 +789,46 @@ check("kalshi: a 1c longshot you rate at 35% shows a real edge", kaCompute({ you
   // No label and no successful call → the case is skipped, not graded as a miss.
   const allFailed = expectedForCase({ objective: "z", log: [{ asset: "kalshi", error: "boom" }] });
   check("caselog: a case with no successful call is skipped", allFailed.skip === "empty", JSON.stringify(allFailed));
+
+  // ── the real-traffic gate's three branches ────────────────────────────────
+  // The zero-case branch is the one that matters most and was the bug: a fresh
+  // clone has no data/cases.json (it is gitignored), coverage computed as
+  // 0/0 -> 0, that tripped the 65% floor, and the exit(1) then SILENTLY SKIPPED
+  // every later stage of `npm run check` — including `npm run probe`, the
+  // out-of-set collision gate. Asserting it here is the whole point of having
+  // extracted realTrafficGate() as a pure function.
+  const empty = realTrafficGate({ caseCount: 0, coverage: 0, noise: 0 });
+  check("caselog gate: no cases is SKIPPED, never failed", empty.status === "skipped" && empty.problems.length === 0, JSON.stringify(empty));
+
+  // …and it must not be reachable via a coverage that merely looks like zero.
+  const emptyNaN = realTrafficGate({ caseCount: 0, coverage: NaN, noise: NaN });
+  check("caselog gate: no cases skips regardless of NaN rates", emptyNaN.status === "skipped", JSON.stringify(emptyNaN));
+
+  // Healthy numbers pass.
+  const okGate = realTrafficGate({ caseCount: 100, coverage: 0.8, noise: 0.3 });
+  check("caselog gate: within bounds is ok", okGate.status === "ok" && okGate.problems.length === 0, JSON.stringify(okGate));
+
+  // Each bound fails on its own, and both are reported together.
+  const lowCov = realTrafficGate({ caseCount: 100, coverage: 0.5, noise: 0.3 });
+  check("caselog gate: coverage below floor fails", lowCov.status === "failed" && lowCov.problems.length === 1 && lowCov.problems[0].startsWith("coverage"), JSON.stringify(lowCov));
+  const highNoise = realTrafficGate({ caseCount: 100, coverage: 0.8, noise: 0.6 });
+  check("caselog gate: noise above ceiling fails", highNoise.status === "failed" && highNoise.problems.length === 1 && highNoise.problems[0].startsWith("noise"), JSON.stringify(highNoise));
+  const both = realTrafficGate({ caseCount: 100, coverage: 0.1, noise: 0.9 });
+  check("caselog gate: both breaches are reported together", both.status === "failed" && both.problems.length === 2, JSON.stringify(both));
+
+  // The bounds are INCLUSIVE at the edge — exactly-at-floor must not fail, or a
+  // baseline recorded from a real measurement would fail the moment it is set.
+  const edge = realTrafficGate({ caseCount: 100, coverage: COVERAGE_FLOOR, noise: NOISE_CEILING });
+  check("caselog gate: exactly at floor/ceiling passes", edge.status === "ok", JSON.stringify(edge));
+
+  // `npm run check` must run the collision gate BEFORE the advisory
+  // real-traffic one. The chain is &&-joined, so ordering is the enforcement:
+  // if caselog could still precede probe, a failing advisory metric would once
+  // again suppress a correctness gate. This asserts the order, not the text.
+  const chain = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf-8")).scripts.check;
+  const iProbe = chain.indexOf("run probe");
+  const iCaselog = chain.indexOf("run caselog");
+  check("check chain: probe runs before caselog", iProbe > -1 && iCaselog > -1 && iProbe < iCaselog, chain);
 
   // Probe/smoke objectives are filtered out by the shared PROBE regex.
   check("caselog: probe objectives are skipped", expectedForCase({ objective: "smoke test one", log: [] }).skip === "probe");

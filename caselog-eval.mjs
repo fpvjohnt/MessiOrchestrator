@@ -60,6 +60,43 @@ export const DEV_TEST =
  * Otherwise the PROXY: assets that produced at least one call that did not fail.
  * A failed call is not evidence the router chose well.
  */
+// These are the CURRENT MEASURED BASELINE minus a small margin, not a target
+// and not an aspiration. The job of these two numbers is to fail when a change
+// makes real-traffic routing WORSE than it is right now. Raise these floors
+// when the real number moves, and never the other way round.
+export const COVERAGE_FLOOR = 0.65;
+export const NOISE_CEILING = 0.45;
+
+/**
+ * The real-traffic gate decision, as a pure function so the zero-case branch is
+ * actually TESTABLE rather than asserted by hand. Returns one of:
+ *   { status: "skipped" }                  nothing to measure
+ *   { status: "ok",     problems: [] }     within both bounds
+ *   { status: "failed", problems: [...] }  a bound was breached
+ *
+ * WHY "skipped" exists, and why it is not cosmetic. `data/cases.json` is
+ * gitignored — the orchestrator writes it as you use it — so a FRESH CLONE has
+ * no case log at all. Coverage then computed as 0/0 -> 0, tripped the 65%
+ * floor, and exited 1. That is a lie: an absent case log means "nothing to
+ * measure", not "routing got worse".
+ *
+ * And it was not harmless. `npm run check` chains its stages with &&, so a
+ * caselog exit(1) SILENTLY SKIPPED every stage after it — which included
+ * `npm run probe`, the out-of-set collision gate. A new contributor's very
+ * first `check` therefore never ran the gate guarding the neighbouring-domain
+ * boundaries (health/job/index/coach/star). The stage order in package.json is
+ * now probe-before-caselog for the same reason: an ADVISORY real-traffic
+ * measurement must never be able to suppress a correctness gate.
+ */
+export function realTrafficGate({ caseCount, coverage, noise }) {
+  if (!caseCount) return { status: "skipped", problems: [] };
+  const pct = (n) => `${(n * 100).toFixed(0)}%`;
+  const problems = [];
+  if (coverage < COVERAGE_FLOOR) problems.push(`coverage ${pct(coverage)} < ${pct(COVERAGE_FLOOR)}`);
+  if (noise > NOISE_CEILING) problems.push(`noise ${pct(noise)} > ${pct(NOISE_CEILING)}`);
+  return { status: problems.length ? "failed" : "ok", problems };
+}
+
 export function expectedForCase(c) {
   const objective = (c.objective ?? "").trim();
   if (!objective) return { skip: "no-objective" };
@@ -104,6 +141,18 @@ async function main() {
     if (r.skip === "empty") { skippedEmpty++; continue; }
     if (r.skip) continue; // no-objective
     cases.push(r);
+  }
+
+  // Nothing to score. Report it as SKIPPED and exit 0 — see realTrafficGate()
+  // for why scoring 0 here used to suppress the collision gate entirely.
+  if (cases.length === 0) {
+    console.log(`\nREAL-TRAFFIC ROUTING — no scoreable cases in the local case log.`);
+    console.log(`  Excluded: ${skippedProbe} probe/smoke objective(s), ${skippedEmpty} case(s) with no successful call.`);
+    console.log(``);
+    console.log(`SKIPPED, not failed. data/cases.json is gitignored — the orchestrator`);
+    console.log(`writes it as you use it — so a fresh clone has nothing to measure yet.`);
+    console.log(`Open a few cases and re-run to get a real-traffic number.`);
+    return;
   }
 
   let fullyCovered = 0;
@@ -164,25 +213,15 @@ async function main() {
   console.log(`router never picked could not have been used. Coverage here is biased`);
   console.log(`TOWARD the router — read it as an optimistic ceiling, not a grade.`);
 
-  // These are the CURRENT MEASURED BASELINE minus a small margin, not a target
-  // and not an aspiration. Coverage is 71% today. Writing 85% here because it
-  // sounds better would make the gate a lie that fails on day one; writing 40%
-  // would make it useless. The job of these two numbers is to fail when a change
-  // makes real-traffic routing WORSE than it is right now.
-  //
-  // 71% is the honest number and it is much lower than the golden set's 99%.
-  // That gap is the finding, not a bug in this file: the golden questions are
-  // short and self-authored, real objectives are long and messy. Raise these
-  // floors when the real number moves, and never the other way round.
-  const COVERAGE_FLOOR = 0.65;
-  const NOISE_CEILING = 0.45;
-  const problems = [];
-  if (coverage < COVERAGE_FLOOR) problems.push(`coverage ${pct(coverage)} < ${pct(COVERAGE_FLOOR)}`);
-  if (noise > NOISE_CEILING) problems.push(`noise ${pct(noise)} > ${pct(NOISE_CEILING)}`);
+  // The floors live next to realTrafficGate(), which owns the decision. The
+  // honest coverage number is much lower than the golden set's — that gap is
+  // the finding, not a bug in this file: golden questions are short and
+  // self-authored, real objectives are long and messy.
+  const verdict = realTrafficGate({ caseCount: cases.length, coverage, noise });
 
   console.log(``);
-  if (problems.length) {
-    console.log(`REAL-TRAFFIC GATE FAILED: ${problems.join(" | ")}`);
+  if (verdict.status === "failed") {
+    console.log(`REAL-TRAFFIC GATE FAILED: ${verdict.problems.join(" | ")}`);
     process.exit(1);
   }
   console.log(`Real-traffic gate OK: coverage ${pct(coverage)} >= ${pct(COVERAGE_FLOOR)} | noise ${pct(noise)} <= ${pct(NOISE_CEILING)}.`);
