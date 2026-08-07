@@ -1005,12 +1005,33 @@ export function resolveRole(query: string): Role | undefined {
   // Scoring by matched length makes the more specific role win regardless of
   // where it sits in the map, so adding a role can never silently steal
   // another's queries.
+  // The loose pass must match on WORD BOUNDARIES, not on a raw substring of a
+  // whitespace-stripped string. It did the latter, and `em` — an alias for
+  // Engineering Manager — is two letters that occur inside ordinary English:
+  //
+  //   "how do I remember things better"   -> r-EM-ember      -> Engineering Manager
+  //   "what is the temperature of the sun"-> t-EM-perature   -> Engineering Manager
+  //   "help me with my email"             -> -EM-ail         -> Engineering Manager
+  //   "explain quantum entanglement"      -> entangl-EM-ent  -> Engineering Manager
+  //   day_in_the_life("systems_support")  -> syst-EM-ssupport-> Engineering Manager
+  //
+  // The last one is a cluster key the tool's own help text prints. Because this
+  // fallback only fires when nothing else matched, its entire effect was to
+  // replace an honest "couldn't tell which specialist this is" with a confident
+  // wrong answer — the failure AGENTS.md forbids outright.
+  //
+  // So: match against the SPACED form with \b anchors, and require >= 4 chars.
+  // Short aliases (em, pgm, tpm) stay reachable through the exact-match pass
+  // above, which is the only place a two-letter alias can be meant literally.
+  const spaced = query.toLowerCase().trim().replace(/[\s\-_/]+/g, " ");
   let best: Role | undefined;
   let bestLen = 0;
   for (const r of Object.values(ROLES)) {
     for (const candidate of [r.title, ...r.aka]) {
-      const c = norm(candidate);
-      if (c.length > bestLen && q.includes(c)) {
+      const c = candidate.toLowerCase().trim().replace(/[\s\-_/]+/g, " ");
+      if (c.length < 4 || c.length <= bestLen) continue;
+      const anchored = new RegExp(`(^|\\W)${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\W|$)`);
+      if (anchored.test(spaced)) {
         best = r;
         bestLen = c.length;
       }

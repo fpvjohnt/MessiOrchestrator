@@ -253,8 +253,18 @@ const PROBES = [
   // SAFETY-CRITICAL, and the reason the `health` fix had to SUBTRACT rather
   // than out-shout: healthguide carries the non-suppressible 911/988 override
   // and must keep the bare `health` tag. These two directions are the contract.
-  { q: "run a health check on our analytics pipeline", want: "polymath", mustNot: "healthguide" },
-  { q: "how do I monitor the health of our BI stack", want: "polymath", mustNot: "healthguide" },
+  // NOTE — these two originally carried `mustNot: "healthguide"` and that
+  // assertion was WRONG, not merely unachievable. Suppressing healthguide here
+  // required consume-idioms keyed on "health check on/of" and "monitor the
+  // health", and those phrases are ordinary medical English: they took
+  // healthguide off "the health of our newborn" and "a health check on my
+  // elderly mother" too. The trade is deliberately accepted in the other
+  // direction now — healthguide MAY ride along on an ops question, because a
+  // medical specialist co-assigned to a pipeline question is mild noise, while
+  // an engineering consultant answering about a newborn is not. What still
+  // matters, and is still asserted, is that polymath is reached at all.
+  { q: "run a health check on our analytics pipeline", want: "polymath" },
+  { q: "how do I monitor the health of our BI stack", want: "polymath" },
   { q: "our data pipeline health is degrading overnight", want: "polymath", mustNot: "healthguide" },
   // …and the medical sense of the same words must still reach healthguide.
   { q: "I need a full health check up with my doctor", want: "healthguide", mustNot: "polymath" },
@@ -316,6 +326,46 @@ const PROBES = [
   // …and the man must still reach curiosity.
   { q: "what did Nikola Tesla actually invent", want: "curiosity", mustNot: "nestegg" },
   { q: "how does a Tesla coil actually work", want: "curiosity", mustNot: "nestegg" },
+
+  // ── the OUT-OF-SET direction the polymath probes above did not cover ──────
+  // Everything below was a MEASURED regression caused by the polymath
+  // vocabulary batch, found only when someone probed the medical, chemistry,
+  // careers and curiosity senses of the words it claimed. The probes above were
+  // all written in the polymath direction — they asserted the new experts were
+  // REACHABLE and never asked what had been made unreachable. That is the whole
+  // lesson: a probe corpus written only from the shapes the author already had
+  // in mind measures the author, not the router.
+
+  // SAFETY-CRITICAL. `health` consume-idioms keyed on a preposition stripped
+  // healthguide — the 911/988 asset — out of ordinary medical English.
+  { q: "I am worried about the mental health of our daughter", want: "healthguide", mustNot: "polymath" },
+  { q: "we are worried about the health of our newborn", want: "healthguide", mustNot: "polymath" },
+  { q: "how do I do a health check on my elderly mother", want: "healthguide", mustNot: "polymath" },
+  { q: "what affects the health of our teeth", want: "healthguide", mustNot: "polymath" },
+  { q: "how do I monitor the health of my heart at home", want: "healthguide", mustNot: "polymath" },
+
+  // `glucose` is a SUGAR MOLECULE before it is a lab marker, and a chemistry
+  // asset shipped one commit earlier. Only the blood sense is healthguide's.
+  { q: "what is the molecular formula of glucose", want: "chemistry", mustNot: "healthguide" },
+  { q: "what does my fasting glucose level mean", want: "healthguide" },
+
+  // Neighbouring senses of words the polymath batch claimed. Each was measured
+  // going to polymath alone; most previously fell to research, so the trade was
+  // a safe fallback for a confident wrong specialist.
+  { q: "what happens during a postmortem examination", mustNot: "polymath" },
+  { q: "what is triage in a mass casualty event", mustNot: "polymath" },
+  { q: "what should I ask a mentor in my first meeting", mustNot: "polymath" },
+  { q: "what does a film director actually do on set", mustNot: "polymath" },
+  // `warehouse` and `snowflake` are now unclaimed by ANY asset, deliberately:
+  // each is genuinely two things (a building / a data warehouse, weather / the
+  // cloud database) and the registry's zero-overlap invariant means only one
+  // owner is possible. Unclaimed means these fall to research, which is the
+  // designed safe fallback — so only the mustNot is asserted here. Do not
+  // "fix" these by giving the word to whichever asset you happen to be adding.
+  { q: "what does a warehouse worker earn per hour", mustNot: "polymath" },
+  { q: "why does the US not use the metric system", mustNot: "polymath" },
+  { q: "why is every snowflake different", mustNot: "polymath" },
+  { q: "was there an internet outage in my area", mustNot: "polymath" },
 ];
 
 let pass = 0;

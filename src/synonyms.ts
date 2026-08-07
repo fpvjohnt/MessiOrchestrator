@@ -62,7 +62,14 @@ const CONCEPTS: Record<string, string[]> = {
   // so the asset carrying the 911/988 override never saw a diabetes question.
   // Only unambiguous lab-marker names go here — none is a word any other asset
   // uses in a different sense.
-  insulin: ["a1c", "hba1c", "glucose", "prediabetic", "prediabetes"],
+  // DELIBERATELY EXCLUDED: `glucose`. It was in this list and it was wrong —
+  // glucose is a SUGAR MOLECULE before it is a lab marker, and the commit
+  // immediately before this one shipped a chemistry asset. "is glucose a
+  // monosaccharide", "what is the molecular formula of glucose" and "how does
+  // glucose get into a plant during photosynthesis" were all being answered by
+  // a medical navigator. The blood sense is carried by the PHRASES entries
+  // below instead, which is where a contested word belongs.
+  insulin: ["a1c", "hba1c", "prediabetic", "prediabetes"],
   // nestegg 'crypto'
   crypto: ["coin", "bitcoin"],
   // polymath 'sql' — "turn my database into a report". Unambiguously technical,
@@ -317,6 +324,14 @@ const PHRASES: Record<string, string> = {
   // add a SECOND polymath signal so it clears the leader by enough that
   // education falls under the secondary ratio. "Enroll in a CTE welding
   // program" contains none of them and is untouched.
+  // → healthguide. The BLOOD sense of glucose only — the bare word is a sugar
+  // molecule and belongs to chemistry/curiosity. See the CONCEPTS note above.
+  "blood glucose": "insulin",
+  "fasting glucose": "insulin",
+  "glucose level": "insulin",
+  "glucose monitor": "insulin",
+  "high glucose": "insulin",
+
   "common table expression": "query",
 
   "underperforming engineer": "leadership",
@@ -598,17 +613,58 @@ const IDIOMS: Record<string, { canon?: string; consume: string[] }> = {
   // words, and consuming `health` there pulled polymath onto a doctor question.
   // A health check that has an OBJECT ("...check ON our pipeline") is the ops
   // sense; a check-up does not take one. One preposition is the whole boundary.
-  "health check on": { canon: "troubleshoot", consume: ["health"] },
-  "health check of": { canon: "troubleshoot", consume: ["health"] },
-  "health check against": { canon: "troubleshoot", consume: ["health"] },
-  "health of our": { canon: "troubleshoot", consume: ["health"] },
-  "monitor the health": { canon: "troubleshoot", consume: ["health"] },
+  // ONLY the object may license this, never the preposition and never the verb.
+  //
+  // The first attempt keyed on "health check on/of/against" and on "health of
+  // our" / "monitor the health" / "system health". Every one of those is
+  // ordinary MEDICAL English, and the result was the precise failure AGENTS.md
+  // documents twice: "I am worried about the mental health of our daughter",
+  // "we are worried about the health of our newborn", "a health check on my
+  // elderly mother", "what affects the health of our teeth" and "foods that
+  // support digestive system health" ALL stopped reaching healthguide — the one
+  // asset carrying the non-suppressible 911/988 override — and were answered by
+  // an engineering consultant instead. "system health" was the worst of them:
+  // immune system, nervous system and digestive system are all system health.
+  //
+  // A preposition is not a domain signal. The ONLY safe licence is a noun that
+  // cannot be part of a body: a pipeline has health, a newborn has health, and
+  // nothing disambiguates "check" between them. So the keys below name the
+  // technical object explicitly and nothing else is consumed.
+  //
+  // The consequence is accepted deliberately: "run a health check on our
+  // analytics pipeline" no longer has `health` removed, so healthguide may ride
+  // along on it. A medical specialist co-assigned to an ops question is mild
+  // noise; an ops consultant answering "the health of our newborn" is not.
+  // The non-engineering senses of three words polymath legitimately needs.
+  // `postmortem`, `outage` and `triage` are real ops vocabulary — "run a
+  // postmortem after an outage", "incident triage for an on-call engineer" —
+  // but each has a everyday sense that was measured going to polymath alone:
+  // an autopsy, an internet outage, and hospital triage. Seven other tags from
+  // the same batch (mentor, mentoring, director, warehouse, metric, snowflake,
+  // anthropic) had no such clean split and were simply dropped instead; the
+  // narrow compounds `datawarehouse`, `programmanagement` and `starschema`
+  // already cover what they were reaching for.
+  "postmortem examination": { consume: ["postmortem"] },
+  "postmortem exam": { consume: ["postmortem"] },
+  "a postmortem on the body": { consume: ["postmortem"] },
+  "internet outage": { consume: ["outage"] },
+  "power outage": { consume: ["outage"] },
+  "outage in my area": { consume: ["outage"] },
+  "mass casualty": { consume: ["triage"] },
+  "triage in the er": { consume: ["triage"] },
+  "triage a patient": { consume: ["triage"] },
+  "triage nurse": { consume: ["triage"] },
   "pipeline health": { canon: "troubleshoot", consume: ["health"] },
   "data health": { canon: "troubleshoot", consume: ["health"] },
-  "system health": { canon: "troubleshoot", consume: ["health"] },
   "service health": { canon: "troubleshoot", consume: ["health"] },
   "cluster health": { canon: "troubleshoot", consume: ["health"] },
   "code health": { canon: "troubleshoot", consume: ["health"] },
+  "database health": { canon: "troubleshoot", consume: ["health"] },
+  "server health": { canon: "troubleshoot", consume: ["health"] },
+  "warehouse health": { canon: "troubleshoot", consume: ["health"] },
+  "dashboard health": { canon: "troubleshoot", consume: ["health"] },
+  "repo health": { canon: "troubleshoot", consume: ["health"] },
+  "build health": { canon: "troubleshoot", consume: ["health"] },
   // → polymath SQL, and CONSUME "index". nestegg owns `index` in the INDEX FUND
   // sense and outscored polymath 4-0 on "how do I index a table for a reporting
   // workload". A database index is a verb-with-an-object; a fund index is not,
