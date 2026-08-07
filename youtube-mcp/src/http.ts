@@ -91,19 +91,39 @@ export async function fetchText(url: URL, opts: FetchTextOptions = {}): Promise<
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      method: opts.method ?? "GET",
-      headers: {
-        // A real UA matters for the unofficial youtube.com paths — the watch page
-        // serves a different (caption-track-free) payload to obvious bots.
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) john-mcp-youtube/0.1",
-        "Accept-Language": "en-US,en;q=0.9",
-        ...(opts.headers ?? {}),
-      },
-      body: opts.body,
-      signal: controller.signal,
-      redirect: "follow",
-    });
+    // The allowlist was asserted at hop 0 and then ASSUMED, because
+    // redirect: "follow" hands the whole redirect chain to undici and a Location
+    // pointing anywhere is never re-checked. AGENTS.md cites this very file as
+    // the reference implementation of "host allowlist, asserted not assumed" —
+    // so the property it is named for held for exactly one request.
+    //
+    // Following manually re-asserts per hop. That matters more than the odds of
+    // Google redirecting somewhere hostile: opts.headers carries the API key on
+    // the Data-API paths, and a followed redirect would have sent it to whatever
+    // host the Location named.
+    let current = url;
+    let res: Response;
+    for (let hop = 0; ; hop++) {
+      if (hop > 5) throw new Error(`Too many redirects starting at ${url.hostname}`);
+      res = await fetch(current, {
+        method: opts.method ?? "GET",
+        headers: {
+          // A real UA matters for the unofficial youtube.com paths — the watch page
+          // serves a different (caption-track-free) payload to obvious bots.
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) john-mcp-youtube/0.1",
+          "Accept-Language": "en-US,en;q=0.9",
+          ...(opts.headers ?? {}),
+        },
+        body: opts.body,
+        signal: controller.signal,
+        redirect: "manual",
+      });
+      const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+      if (!location) break;
+      const next = new URL(location, current);
+      assertAllowedHost(next); // the whole point — throws before the next request
+      current = next;
+    }
 
     const reader = res.body?.getReader();
     let text = "";

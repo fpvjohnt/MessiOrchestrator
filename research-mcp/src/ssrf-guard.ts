@@ -27,6 +27,16 @@ function ipv4Blocked(ip: string): boolean {
   if (a === 172 && b >= 16 && b <= 31) return true; // private
   if (a === 192 && b === 168) return true; // private
   if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64/10
+  // Ranges that are nominally "special use" but carry real, reachable internal
+  // endpoints on common gear — each was measured passing this guard:
+  //   192.0.0.0/24   IETF protocol assignments. 192.0.0.1 is the live DS-Lite
+  //                  AFTR address on some consumer CPE.
+  //   198.18.0.0/15  benchmarking. Zscaler and some Cisco kit put real internal
+  //                  services here, so "nobody routes it" is not true in practice.
+  //   192.88.99.0/24 6to4 relay anycast — deprecated, still answered in places.
+  if (a === 192 && b === 0 && p[2] === 0) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 192 && b === 88 && p[2] === 99) return true;
   if (a >= 224) return true; // multicast / reserved / broadcast
   return false;
 }
@@ -91,6 +101,13 @@ function ipv6Blocked(ip: string): boolean {
   if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b) return embeddedV4(12);
   // 2002::/16 6to4 — the v4 address is bytes 2-5.
   if (b[0] === 0x20 && b[1] === 0x02) return ipv4Blocked(b.slice(2, 6).join("."));
+  // 2001::/32 Teredo — the CLIENT's v4 address is bytes 12-15, stored inverted.
+  // The 6to4 branch above inspected its embedded v4 and this one did not, so a
+  // Teredo address wrapping a private client address passed unexamined.
+  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x00 && b[3] === 0x00) {
+    const client = b.slice(12, 16).map((x) => x ^ 0xff);
+    return ipv4Blocked(client.join("."));
+  }
 
   if (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) return true; // fe80::/10 link-local
   if ((b[0] & 0xfe) === 0xfc) return true; // fc00::/7 unique-local
@@ -113,6 +130,13 @@ export async function assertPublicUrl(rawUrl: string): Promise<{ url: URL; ip: s
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`Blocked non-http(s) URL scheme "${url.protocol}".`);
+  }
+  // Public-IP-only already bounds the blast radius, but with no port rule this
+  // fetcher is a port scanner for any public host: http://8.8.8.8:22/ and
+  // :6379 both passed. Web content lives on a handful of ports; an allowlist
+  // costs nothing and removes the primitive entirely.
+  if (url.port !== "" && !["80", "443", "8080", "8443"].includes(url.port)) {
+    throw new Error(`Blocked non-web port ${url.port} — only 80, 443, 8080 and 8443 are allowed.`);
   }
 
   const host = url.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
