@@ -1,5 +1,5 @@
 import type { AssetConfig } from "./types.js";
-import { expandConcepts, stem } from "./synonyms.js";
+import { expandConceptsWithConsumed, stem } from "./synonyms.js";
 
 export interface AssetMatch {
   name: string;
@@ -130,8 +130,20 @@ export function matchAssets(objective: string, assets: AssetConfig[]): AssetMatc
   // another country") only exist with their glue words in place, so they
   // cannot be recovered from the filtered content tokens.
   const sequence = tokenize(objective).map(stem);
-  const objectiveTokens = expandConcepts(contentTokens(objective), sequence);
-  for (const joined of compoundJoins(tokenize(objective))) objectiveTokens.add(joined);
+  const { tokens: objectiveTokens, consumed } = expandConceptsWithConsumed(
+    contentTokens(objective),
+    sequence
+  );
+  // A compound join must never resurrect a token an idiom deliberately consumed.
+  // The joins are computed HERE, after expandConcepts has already run its
+  // subtraction, so without this filter the two rules fight and the join wins.
+  // "Tesla's Q2 profit" is the case that exposed it: the idiom consumes `tesla`
+  // (the CAR COMPANY is nestegg's, the INVENTOR is curiosity's), and then
+  // "tesla"+"s" joins to "teslas", stems back to `tesla`, and curiosity scores
+  // anyway. Every consume-idiom followed by a possessive had the same hole.
+  for (const joined of compoundJoins(tokenize(objective))) {
+    if (!consumed.has(joined)) objectiveTokens.add(joined);
+  }
   const candidates = assets.filter((a) => a.status === "active");
 
   const scored: AssetMatch[] = candidates.map((asset) => {

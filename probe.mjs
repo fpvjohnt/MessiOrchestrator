@@ -303,6 +303,19 @@ const PROBES = [
   // (caught "credit reporting agencies"). All three now use narrower compounds.
   { q: "why are Amazon customers unhappy with the delivery experience and price increases", mustNot: "polymath" },
   { q: "are Experian TransUnion and Equifax the three main credit reporting agencies", mustNot: "polymath" },
+
+  // ── tesla: the INVENTOR vs the CAR COMPANY ────────────────────────────────
+  // curiosity owns `tesla` and keeps it — the tag sits beside einstein/newton/
+  // darwin. But the real case log's five Tesla objectives were all company
+  // financials, and curiosity rode every one: it was the largest single-tag
+  // noise source in the real-traffic measurement. The disambiguator is the
+  // possessive followed by a money noun, so both directions are locked here.
+  { q: "Explain why Tesla's Q2 2026 profit shrank despite record revenue", want: "nestegg", mustNot: "curiosity" },
+  { q: "Explain share dilution and whether Tesla's share count has grown", want: "nestegg", mustNot: "curiosity" },
+  { q: "is Tesla's stock overvalued right now", want: "nestegg", mustNot: "curiosity" },
+  // …and the man must still reach curiosity.
+  { q: "what did Nikola Tesla actually invent", want: "curiosity", mustNot: "nestegg" },
+  { q: "how does a Tesla coil actually work", want: "curiosity", mustNot: "nestegg" },
 ];
 
 let pass = 0;

@@ -554,6 +554,35 @@ const IDIOMS: Record<string, { canon?: string; consume: string[] }> = {
   "psychology test": { canon: "exam", consume: ["psychology"] },
   "psychology class": { canon: "coursework", consume: ["psychology"] },
   "psychology course": { canon: "coursework", consume: ["psychology"] },
+  // → nestegg, and CONSUME "tesla". curiosity owns `tesla` for NIKOLA Tesla —
+  // the tag sits beside `einstein`, `newton` and `darwin` — but the case log's
+  // five Tesla objectives are all about the CAR COMPANY's financials (Q2
+  // profit, free cash flow, share dilution, share count), and curiosity rode
+  // every one of them. It was the single largest single-tag noise source in the
+  // real-traffic measurement.
+  //
+  // The disambiguator is the POSSESSIVE followed by a money noun: "Tesla's Q2
+  // profit" is the company, "Nikola Tesla" and "Tesla the inventor" are the
+  // man, and the man's possessive never precedes an earnings word. Note the
+  // stemmed stream splits "Tesla's" into `tesla s`, which is why the keys read
+  // that way. Bare `tesla` is deliberately NOT consumed.
+  "tesla s q1": { canon: "stock", consume: ["tesla"] },
+  "tesla s q2": { canon: "stock", consume: ["tesla"] },
+  "tesla s q3": { canon: "stock", consume: ["tesla"] },
+  "tesla s q4": { canon: "stock", consume: ["tesla"] },
+  "tesla s profit": { canon: "stock", consume: ["tesla"] },
+  "tesla s revenue": { canon: "stock", consume: ["tesla"] },
+  "tesla s share": { canon: "stock", consume: ["tesla"] },
+  "tesla s stock": { canon: "stock", consume: ["tesla"] },
+  "tesla s earning": { canon: "stock", consume: ["tesla"] },
+  "tesla s margin": { canon: "stock", consume: ["tesla"] },
+  "tesla s cash": { canon: "stock", consume: ["tesla"] },
+  "tesla s negative": { canon: "stock", consume: ["tesla"] },
+  "tesla s valuation": { canon: "stock", consume: ["tesla"] },
+  "tesla q2 2026": { canon: "stock", consume: ["tesla"] },
+  "tesla stock": { canon: "stock", consume: ["tesla"] },
+  "tesla share price": { canon: "stock", consume: ["tesla"] },
+  "tesla earning": { canon: "stock", consume: ["tesla"] },
   // → polymath, and CONSUME "health". This is the collision the operator
   // actually hit: "run a health check on our analytics pipeline" routed to
   // HEALTHGUIDE as the primary (5 vs polymath's 3) — a BI/ops question answered
@@ -661,7 +690,33 @@ function phraseGrams(sequence: string[]): string[] {
  *                  single-word map applies.
  */
 export function expandConcepts(tokens: Iterable<string>, sequence: string[] = []): Set<string> {
+  return expandConceptsWithConsumed(tokens, sequence).tokens;
+}
+
+/**
+ * As expandConcepts, but ALSO reports which tokens the idiom layer deliberately
+ * removed. The caller needs that set, and this is not a nicety.
+ *
+ * `expandConcepts` runs idioms last precisely so "a consumed token must not
+ * survive because some other rule added it back" — but `matchAssets` then adds
+ * `compoundJoins()` on top of the returned set, OUTSIDE this function, and a
+ * join can reconstruct exactly the token that was just consumed. The possessive
+ * is the live case: "Tesla's Q2 profit" tokenizes to [tesla, s], the idiom
+ * consumes `tesla`, and then the join "tesla"+"s" = "teslas" stems straight
+ * back to `tesla` and hands curiosity (which owns the tag for NIKOLA Tesla) its
+ * score back. The subtraction silently did nothing.
+ *
+ * Returning the consumed set lets the caller filter its joins, which keeps the
+ * guarantee the comment above always claimed. Every consume-idiom whose word
+ * can be followed by a short token that re-forms it was affected, not just this
+ * one — the class is "possessive after a consumed word".
+ */
+export function expandConceptsWithConsumed(
+  tokens: Iterable<string>,
+  sequence: string[] = []
+): { tokens: Set<string>; consumed: Set<string> } {
   const out = new Set(tokens);
+  const consumed = new Set<string>();
   for (const t of tokens) {
     const canon = SURFACE_TO_CANON.get(t);
     if (canon) out.add(stem(canon));
@@ -677,7 +732,10 @@ export function expandConcepts(tokens: Iterable<string>, sequence: string[] = []
     const idiom = IDIOMS[gram];
     if (!idiom) continue;
     if (idiom.canon) out.add(stem(idiom.canon));
-    for (const token of idiom.consume) out.delete(token);
+    for (const token of idiom.consume) {
+      out.delete(token);
+      consumed.add(token);
+    }
   }
-  return out;
+  return { tokens: out, consumed };
 }
